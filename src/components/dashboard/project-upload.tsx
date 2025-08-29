@@ -16,9 +16,10 @@ import { UploadCloud, FileCheck2, FileWarning, FileX2 } from 'lucide-react';
 
 type ProjectUploadProps = {
   onDataFileChange: (isUploaded: boolean) => void;
+  onProjectFileChange: (isUploaded: boolean) => void;
 };
 
-export function ProjectUpload({ onDataFileChange }: ProjectUploadProps) {
+export function ProjectUpload({ onDataFileChange, onProjectFileChange }: ProjectUploadProps) {
   const { toast } = useToast();
   const [projectFile, setProjectFile] = useState<File | null>(null);
   const [dataFile, setDataFile] = useState<File | null>(null);
@@ -29,12 +30,16 @@ export function ProjectUpload({ onDataFileChange }: ProjectUploadProps) {
   ) => {
     const file = e.target.files?.[0];
     if (!file) {
-        if (fileType === 'data') {
-            onDataFileChange(false);
-            setDataFile(null);
-        }
-        return;
-    };
+      if (fileType === 'project') {
+        onProjectFileChange(false);
+        setProjectFile(null);
+      }
+      if (fileType === 'data') {
+        onDataFileChange(false);
+        setDataFile(null);
+      }
+      return;
+    }
 
     const allowedProjectTypes = ['application/zip', 'application/x-zip-compressed'];
     const allowedDataTypes = [
@@ -43,16 +48,24 @@ export function ProjectUpload({ onDataFileChange }: ProjectUploadProps) {
     ];
 
     let isValid = false;
-    if (fileType === 'project' && allowedProjectTypes.includes(file.type)) {
-      isValid = true;
-      setProjectFile(file);
-    } else if (fileType === 'data' && allowedDataTypes.includes(file.type)) {
-      isValid = true;
-      setDataFile(file);
-      onDataFileChange(true);
+    if (fileType === 'project') {
+      if (allowedProjectTypes.includes(file.type)) {
+        isValid = true;
+        setProjectFile(file);
+        onProjectFileChange(true);
+      } else {
+        onProjectFileChange(false);
+        setProjectFile(null);
+      }
     } else if (fileType === 'data') {
+      if (allowedDataTypes.includes(file.type)) {
+        isValid = true;
+        setDataFile(file);
+        onDataFileChange(true);
+      } else {
         onDataFileChange(false);
         setDataFile(null);
+      }
     }
 
     if (isValid) {
@@ -62,21 +75,21 @@ export function ProjectUpload({ onDataFileChange }: ProjectUploadProps) {
         action: <FileCheck2 className="text-green-500" />,
       });
     } else {
-        if(file.size === 0){
-             toast({
-                variant: 'destructive',
-                title: 'Warning: Empty File',
-                description: `${file.name} appears to be empty.`,
-                action: <FileWarning className="text-yellow-500" />,
-            });
-        } else {
-            toast({
-                variant: 'destructive',
-                title: 'Error: Invalid File Format',
-                description: `Please upload a valid ${fileType} file.`,
-                action: <FileX2 className="text-red-500" />,
-            });
-        }
+      if (file.size === 0) {
+        toast({
+          variant: 'destructive',
+          title: 'Warning: Empty File',
+          description: `${file.name} appears to be empty.`,
+          action: <FileWarning className="text-yellow-500" />,
+        });
+      } else {
+        toast({
+          variant: 'destructive',
+          title: 'Error: Invalid File Format',
+          description: `Please upload a valid ${fileType} file.`,
+          action: <FileX2 className="text-red-500" />,
+        });
+      }
     }
   };
 

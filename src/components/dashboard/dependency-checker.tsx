@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useState } from 'react';
@@ -14,10 +15,13 @@ import { CheckCircle2, AlertTriangle, XCircle, Loader2 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 
 type Status = 'idle' | 'checking' | 'success' | 'warning' | 'error';
+type DependencyCheckerProps = {
+  isProjectFileUploaded: boolean;
+};
 
 const missingLibraries = ['robotframework-requests', 'robotframework-seleniumlibrary'];
 
-export function DependencyChecker() {
+export function DependencyChecker({ isProjectFileUploaded }: DependencyCheckerProps) {
   const [status, setStatus] = useState<Status>('idle');
   const [isInstalling, setIsInstalling] = useState(false);
   const { toast } = useToast();
@@ -101,11 +105,11 @@ export function DependencyChecker() {
       <CardHeader>
         <CardTitle className="font-headline">Dependency Checker</CardTitle>
         <CardDescription>
-          Scan your project for missing libraries.
+          Upload a project to scan for missing libraries.
         </CardDescription>
       </CardHeader>
       <CardContent className="grid gap-4">
-        <Button onClick={handleCheckDependencies} disabled={status === 'checking'}>
+        <Button onClick={handleCheckDependencies} disabled={status === 'checking' || !isProjectFileUploaded}>
           {status === 'checking' && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
           Check Dependencies
         </Button>

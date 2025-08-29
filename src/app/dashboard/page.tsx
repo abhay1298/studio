@@ -59,6 +59,8 @@ const recentRuns = [
 
 export default function DashboardPage() {
   const [isDataFileUploaded, setIsDataFileUploaded] = useState(false);
+  const [isProjectFileUploaded, setIsProjectFileUploaded] = useState(false);
+
 
   return (
     <div className="grid gap-4 md:gap-8 lg:grid-cols-2 xl:grid-cols-3">
@@ -171,8 +173,8 @@ export default function DashboardPage() {
         </Card>
       </div>
       <div className="grid auto-rows-max items-start gap-4 md:gap-8">
-        <ProjectUpload onDataFileChange={setIsDataFileUploaded} />
-        <DependencyChecker />
+        <ProjectUpload onDataFileChange={setIsDataFileUploaded} onProjectFileChange={setIsProjectFileUploaded} />
+        <DependencyChecker isProjectFileUploaded={isProjectFileUploaded} />
       </div>
     </div>
   );
