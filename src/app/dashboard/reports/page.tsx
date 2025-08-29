@@ -1,3 +1,6 @@
+
+"use client";
+
 import {
   Card,
   CardContent,
@@ -16,6 +19,7 @@ import {
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Download, Eye } from 'lucide-react';
+import { useToast } from '@/hooks/use-toast';
 
 const reports = [
   {
@@ -61,6 +65,26 @@ const reports = [
 ];
 
 export default function ReportsPage() {
+  const { toast } = useToast();
+
+  const handleViewReport = (reportId: string) => {
+    toast({
+      title: 'Opening Report',
+      description: `Generating view for report ${reportId}...`,
+    });
+    // In a real app, you would navigate to a report details page
+    // e.g., router.push(`/dashboard/reports/${reportId}`);
+  };
+
+  const handleDownloadReport = (reportId: string) => {
+    toast({
+      title: 'Downloading Report',
+      description: `Preparing download for report ${reportId}...`,
+    });
+    // In a real app, you would trigger a file download here
+  };
+
+
   return (
     <div className="space-y-6">
       <h1 className="font-headline text-3xl font-bold tracking-tight">
@@ -115,11 +139,11 @@ export default function ReportsPage() {
                     {report.fail}
                   </TableCell>
                   <TableCell className="text-right">
-                    <Button variant="outline" size="icon" className="mr-2">
+                    <Button variant="outline" size="icon" className="mr-2" onClick={() => handleViewReport(report.id)}>
                       <Eye className="h-4 w-4" />
                       <span className="sr-only">View Report</span>
                     </Button>
-                    <Button variant="outline" size="icon">
+                    <Button variant="outline" size="icon" onClick={() => handleDownloadReport(report.id)}>
                       <Download className="h-4 w-4" />
                       <span className="sr-only">Download Report</span>
                     </Button>
