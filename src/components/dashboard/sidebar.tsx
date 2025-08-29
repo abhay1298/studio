@@ -9,7 +9,7 @@ import {
   SidebarFooter,
   SidebarContent
 } from "@/components/ui/sidebar";
-import { Bot, LayoutDashboard, PlayCircle, BarChart3, FileText, Settings, LifeBuoy } from "lucide-react";
+import { Bot, LayoutDashboard, PlayCircle, BarChart3, FileText, Settings, LifeBuoy, BookOpen } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
@@ -54,15 +54,20 @@ export function DashboardSidebar() {
         <SidebarFooter>
              <SidebarMenu>
                 <SidebarMenuItem>
+                    <Link href="/dashboard/help" passHref legacyBehavior>
+                        <SidebarMenuButton 
+                            isActive={pathname === "/dashboard/help"} 
+                            className="justify-start" 
+                            tooltip="Help & Documentation">
+                            <BookOpen className="size-5" />
+                            <span>Help & Docs</span>
+                        </SidebarMenuButton>
+                    </Link>
+                </SidebarMenuItem>
+                <SidebarMenuItem>
                     <SidebarMenuButton className="justify-start" tooltip="Settings">
                         <Settings className="size-5" />
                         <span>Settings</span>
-                    </SidebarMenuButton>
-                </SidebarMenuItem>
-                 <SidebarMenuItem>
-                    <SidebarMenuButton className="justify-start" tooltip="Help & Support">
-                        <LifeBuoy className="size-5" />
-                        <span>Help & Support</span>
                     </SidebarMenuButton>
                 </SidebarMenuItem>
              </SidebarMenu>
