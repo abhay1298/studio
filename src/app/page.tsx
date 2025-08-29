@@ -20,8 +20,8 @@ export default function LoginPage() {
         <LoginForm />
         <p className="mt-4 text-center text-sm text-muted-foreground">
           Don&apos;t have an account?{' '}
-          <Link href="/register" className="font-medium text-primary hover:underline">
-            Register
+          <Link href="/register" passHref>
+            <span className="font-medium text-primary hover:underline">Register</span>
           </Link>
         </p>
         <p className="mt-8 text-center text-sm text-muted-foreground">
