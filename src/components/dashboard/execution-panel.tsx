@@ -30,31 +30,11 @@ import { AiAnalysisDialog } from "./ai-analysis-dialog";
 type ExecutionStatus = "idle" | "running" | "success" | "failed";
 
 type ExecutionPanelProps = {
-  isOrchestratorFileUploaded: boolean;
+  isDataFileUploaded: boolean;
 };
 
-const mockFailureLog = `
-==============================================================================
-Regression Tests                                                              
-==============================================================================
-Payment Gateway :: Test successful transaction                            | PASS |
-------------------------------------------------------------------------------
-Payment Gateway :: Test transaction with expired card                     | FAIL |
-Element with locator '//button[@id="submit-payment-flaky"]' not found after 5 seconds.
-------------------------------------------------------------------------------
-Inventory Management :: Add new item                                      | PASS |
-------------------------------------------------------------------------------
-Regression Tests                                                          | FAIL |
-3 tests, 2 passed, 1 failed
-==============================================================================
-Output:  /path/to/output.xml
-Log:     /path/to/log.html
-Report:  /path/to/report.html
-`;
-
-export function ExecutionPanel({ isOrchestratorFileUploaded }: ExecutionPanelProps) {
+export function ExecutionPanel({ isDataFileUploaded }: ExecutionPanelProps) {
   const [status, setStatus] = useState<ExecutionStatus>("idle");
-  const [progress, setProgress] = useState(0);
   const [logs, setLogs] = useState("");
   const { toast } = useToast();
   const [runConfig, setRunConfig] = useState({
@@ -70,19 +50,17 @@ export function ExecutionPanel({ isOrchestratorFileUploaded }: ExecutionPanelPro
   };
 
   const handleRun = async (runType: string) => {
-    if (runType === "Orchestrator" && !isOrchestratorFileUploaded) {
+    if (runType === "Orchestrator" && !isDataFileUploaded) {
       toast({
         variant: "destructive",
         title: "Excel or CSV file not uploaded",
         description:
           "Please upload a CSV/Excel file to execute via Orchestrator.",
-        action: <AlertCircle />,
       });
       return;
     }
     
     setLogs("Starting execution...\n");
-    setProgress(0);
     setStatus("running");
     setLastFailedLogs('');
     toast({ title: `Starting ${runType} run...` });
@@ -132,8 +110,6 @@ export function ExecutionPanel({ isOrchestratorFileUploaded }: ExecutionPanelPro
         title: "Execution Error",
         description: "Could not connect to the execution service.",
       });
-    } finally {
-        setProgress(100);
     }
   };
 
@@ -196,7 +172,7 @@ export function ExecutionPanel({ isOrchestratorFileUploaded }: ExecutionPanelPro
                   This mode will execute tests based on the uploaded Excel/CSV file. Ensure the file is uploaded and validated.
                 </AlertDescription>
               </Alert>
-              <Button onClick={() => handleRun("Orchestrator")} disabled={isRunning || !isOrchestratorFileUploaded}>
+              <Button onClick={() => handleRun("Orchestrator")} disabled={isRunning || !isDataFileUploaded}>
                 {isRunning && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                 Run via Orchestrator
               </Button>
@@ -212,7 +188,7 @@ export function ExecutionPanel({ isOrchestratorFileUploaded }: ExecutionPanelPro
             <CardDescription>Live logs from the test execution.</CardDescription>
           </CardHeader>
           <CardContent>
-            {isRunning && <Progress value={progress} className="w-full mb-4" />}
+            {isRunning && <Progress value={100} className="w-full mb-4 animate-pulse" />}
             <ScrollArea className="h-72 w-full rounded-md border bg-muted p-4">
               <pre className="text-sm font-code whitespace-pre-wrap">{logs}</pre>
             </ScrollArea>

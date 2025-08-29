@@ -55,7 +55,7 @@ export function AiAnalysisDialog({ logs }: AiAnalysisDialogProps) {
   return (
     <Dialog open={isOpen} onOpenChange={handleOpenChange}>
       <DialogTrigger asChild>
-        <Button variant="outline">
+        <Button variant="outline" disabled={!logs}>
           <Sparkles className="mr-2 h-4 w-4 text-accent" />
           Analyze with AI
         </Button>
