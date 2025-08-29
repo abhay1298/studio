@@ -1,3 +1,4 @@
+
 "use client";
 
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -22,8 +23,10 @@ import { sendWelcomeEmail } from "@/ai/flows/send-welcome-email";
 
 const formSchema = z
   .object({
-    name: z.string().min(1, "Full name is required"),
-    email: z.string().email("Invalid email address"),
+    name: z.string()
+      .min(1, "Full name is required")
+      .regex(/^[a-zA-Z\s]+$/, "Full name can only contain letters and spaces"),
+    email: z.string().email("Please enter a valid email address"),
     password: z.string().min(8, "Password must be at least 8 characters"),
     confirmPassword: z.string(),
   })
