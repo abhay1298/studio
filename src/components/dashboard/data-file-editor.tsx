@@ -8,7 +8,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
-import { Download, UploadCloud, TriangleAlert } from 'lucide-react';
+import { Download, UploadCloud, TriangleAlert, Plus, Trash2 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 
 type CellData = string | number;
@@ -107,6 +107,26 @@ export function DataFileEditor() {
       });
   };
 
+  const addRow = () => {
+    setData([...data, Array(headers.length).fill('')]);
+  };
+
+  const removeRow = (rowIndex: number) => {
+    setData(data.filter((_, index) => index !== rowIndex));
+  };
+  
+  const addColumn = () => {
+    const newColumnName = `New Column ${headers.length + 1}`;
+    setHeaders([...headers, newColumnName]);
+    setData(data.map(row => [...row, '']));
+  };
+
+  const removeColumn = (colIndex: number) => {
+    setHeaders(headers.filter((_, index) => index !== colIndex));
+    setData(data.map(row => row.filter((_, index) => index !== colIndex)));
+  };
+
+
   if (error) {
     return (
         <Alert variant="destructive">
@@ -131,13 +151,29 @@ export function DataFileEditor() {
 
   return (
     <div className="space-y-4">
+        <div className="flex gap-2">
+             <Button onClick={addRow} variant="outline">
+                <Plus className="mr-2 h-4 w-4" />
+                Add Row
+            </Button>
+            <Button onClick={addColumn} variant="outline">
+                <Plus className="mr-2 h-4 w-4" />
+                Add Column
+            </Button>
+        </div>
         <div className="w-full overflow-x-auto">
             <Table className="min-w-full">
                 <TableHeader>
                 <TableRow>
                     {headers.map((header, index) => (
-                    <TableHead key={index}>{header}</TableHead>
+                    <TableHead key={index} className="relative group">
+                        {header}
+                        <Button variant="ghost" size="icon" className="absolute top-1/2 right-0 -translate-y-1/2 h-7 w-7 opacity-0 group-hover:opacity-100" onClick={() => removeColumn(index)}>
+                            <Trash2 className="h-4 w-4 text-destructive"/>
+                        </Button>
+                    </TableHead>
                     ))}
+                    <TableHead>Actions</TableHead>
                 </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -153,6 +189,11 @@ export function DataFileEditor() {
                         />
                         </TableCell>
                     ))}
+                     <TableCell>
+                        <Button variant="ghost" size="icon" onClick={() => removeRow(rowIndex)}>
+                            <Trash2 className="h-4 w-4 text-destructive"/>
+                        </Button>
+                    </TableCell>
                     </TableRow>
                 ))}
                 </TableBody>
