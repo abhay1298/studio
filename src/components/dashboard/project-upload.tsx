@@ -19,11 +19,10 @@ import { UploadCloud, FileCheck2, FileWarning, FileX2, Pencil } from 'lucide-rea
 import { cn } from '@/lib/utils';
 
 type ProjectUploadProps = {
-  onDataFileChange: (isUploaded: boolean) => void;
   onProjectFileChange: (isUploaded: boolean) => void;
 };
 
-export function ProjectUpload({ onDataFileChange, onProjectFileChange }: ProjectUploadProps) {
+export function ProjectUpload({ onProjectFileChange }: ProjectUploadProps) {
   const { toast } = useToast();
   const router = useRouter();
   const [projectFile, setProjectFile] = useState<File | null>(null);
@@ -40,7 +39,6 @@ export function ProjectUpload({ onDataFileChange, onProjectFileChange }: Project
         setProjectFile(null);
       }
       if (fileType === 'data') {
-        onDataFileChange(false);
         setDataFile(null);
         if (typeof window !== 'undefined') {
           sessionStorage.removeItem('uploadedDataFile');
@@ -71,7 +69,6 @@ export function ProjectUpload({ onDataFileChange, onProjectFileChange }: Project
       if (allowedDataTypes.includes(file.type)) {
         isValid = true;
         setDataFile(file);
-        onDataFileChange(true);
         // Store the file in session storage to pass to the editor page
         const reader = new FileReader();
         reader.onload = function(event) {
@@ -82,7 +79,6 @@ export function ProjectUpload({ onDataFileChange, onProjectFileChange }: Project
         };
         reader.readAsDataURL(file);
       } else {
-        onDataFileChange(false);
         setDataFile(null);
          if (typeof window !== 'undefined') {
           sessionStorage.removeItem('uploadedDataFile');

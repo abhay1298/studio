@@ -28,11 +28,7 @@ import { AiAnalysisDialog } from "./ai-analysis-dialog";
 
 type ExecutionStatus = "idle" | "running" | "success" | "failed";
 
-type ExecutionPanelProps = {
-  isDataFileUploaded: boolean;
-};
-
-export function ExecutionPanel({ isDataFileUploaded }: ExecutionPanelProps) {
+export function ExecutionPanel() {
   const [status, setStatus] = useState<ExecutionStatus>("idle");
   const [logs, setLogs] = useState("");
   const { toast } = useToast();
@@ -43,6 +39,19 @@ export function ExecutionPanel({ isDataFileUploaded }: ExecutionPanelProps) {
     testcase: '',
   });
   const [lastFailedLogs, setLastFailedLogs] = useState('');
+  const [isDataFileUploaded, setIsDataFileUploaded] = useState(false);
+
+  // This is a bit of a workaround to check for the session storage item
+  // and update the state accordingly.
+  if (typeof window !== 'undefined') {
+    const file = sessionStorage.getItem('uploadedDataFile');
+    if (file && !isDataFileUploaded) {
+      setIsDataFileUploaded(true);
+    } else if (!file && isDataFileUploaded) {
+      setIsDataFileUploaded(false);
+    }
+  }
+
 
   const handleInputChange = (field: keyof typeof runConfig, value: string) => {
     setRunConfig(prev => ({...prev, [field]: value}));
