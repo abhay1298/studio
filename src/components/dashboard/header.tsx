@@ -1,7 +1,7 @@
 
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
   Bell,
   Home,
@@ -44,6 +44,14 @@ export function DashboardHeader() {
   const { toast } = useToast();
   const [isProfileDialogOpen, setIsProfileDialogOpen] = useState(false);
   const [avatarUrl, setAvatarUrl] = useState("https://picsum.photos/32/32");
+  const [username, setUsername] = useState('Admin');
+
+  useEffect(() => {
+    const storedUsername = localStorage.getItem('username');
+    if (storedUsername) {
+      setUsername(storedUsername);
+    }
+  }, []);
 
   const handleLogout = () => {
     toast({
@@ -66,7 +74,7 @@ export function DashboardHeader() {
           <SidebarTrigger className="md:hidden" />
         <div className="w-full flex-1">
           <h1 className="font-headline text-lg font-semibold md:text-2xl">
-            Welcome back, Admin!
+            Welcome back, {username}!
           </h1>
         </div>
         <div className="flex items-center gap-2">

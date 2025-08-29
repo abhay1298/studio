@@ -1,3 +1,4 @@
+
 "use client";
 
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -45,6 +46,9 @@ export function LoginForm() {
 
     // Mock authentication
     setTimeout(() => {
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('username', values.username);
+      }
       toast({
         title: "Login Successful",
         description: `Welcome back, ${values.username}!`,
