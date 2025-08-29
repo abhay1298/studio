@@ -16,6 +16,7 @@ import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/hooks/use-toast';
 import { UploadCloud, FileCheck2, FileWarning, FileX2, Pencil } from 'lucide-react';
+import { cn } from '@/lib/utils';
 
 type ProjectUploadProps = {
   onDataFileChange: (isUploaded: boolean) => void;
@@ -56,7 +57,6 @@ export function ProjectUpload({ onDataFileChange, onProjectFileChange }: Project
     ];
 
     let isValid = false;
-    let isData = false;
 
     if (fileType === 'project') {
       if (allowedProjectTypes.includes(file.type)) {
@@ -68,7 +68,6 @@ export function ProjectUpload({ onDataFileChange, onProjectFileChange }: Project
         setProjectFile(null);
       }
     } else if (fileType === 'data') {
-      isData = true;
       if (allowedDataTypes.includes(file.type)) {
         isValid = true;
         setDataFile(file);
@@ -116,11 +115,10 @@ export function ProjectUpload({ onDataFileChange, onProjectFileChange }: Project
       }
     }
   };
-
+  
   const handleEditClick = () => {
     router.push('/dashboard/data-editor');
   };
-
 
   return (
     <Card>
@@ -130,31 +128,45 @@ export function ProjectUpload({ onDataFileChange, onProjectFileChange }: Project
           Upload your project and data files to begin.
         </CardDescription>
       </CardHeader>
-      <CardContent className="grid gap-4">
+      <CardContent className="grid gap-6">
         <div className="grid gap-2">
           <Label htmlFor="project-file">Robot Framework Project (.zip)</Label>
-          <div className="relative">
-            <UploadCloud className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground" />
+          <div className="flex items-center gap-2">
+            <Label htmlFor="project-file" className={cn(
+              "flex items-center gap-2 cursor-pointer",
+              buttonVariants({ variant: 'outline' })
+            )}>
+              <UploadCloud />
+              <span className="font-bold">Choose file</span>
+            </Label>
             <Input
               id="project-file"
               type="file"
-              className="pl-10"
+              className="hidden"
               accept=".zip"
               onChange={(e) => handleFileChange(e, 'project')}
             />
+             {projectFile && <span className="text-sm text-muted-foreground truncate">{projectFile.name}</span>}
           </div>
         </div>
         <div className="grid gap-2">
           <Label htmlFor="data-file">Test Data for Orchestrator (.xlsx, .csv)</Label>
-          <div className="relative">
-             <UploadCloud className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground" />
+          <div className="flex items-center gap-2">
+            <Label htmlFor="data-file" className={cn(
+              "flex items-center gap-2 cursor-pointer",
+              buttonVariants({ variant: 'outline' })
+            )}>
+              <UploadCloud />
+              <span className="font-bold">Choose file</span>
+            </Label>
             <Input
               id="data-file"
               type="file"
-              className="pl-10"
+              className="hidden"
               accept=".xlsx,.csv"
               onChange={(e) => handleFileChange(e, 'data')}
             />
+             {dataFile && <span className="text-sm text-muted-foreground truncate">{dataFile.name}</span>}
           </div>
         </div>
       </CardContent>
