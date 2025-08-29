@@ -14,7 +14,7 @@ export default function LoginPage() {
             Robot Maestro
           </h1>
           <p className="mt-1 text-muted-foreground">
-            robot dashboard
+            AI-powered Robot Framework Dashboard
           </p>
         </div>
         <LoginForm />
