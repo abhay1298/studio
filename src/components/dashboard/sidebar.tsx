@@ -20,6 +20,7 @@ const menuItems = [
   { href: "/dashboard/results", label: "Results", icon: BarChart3 },
   { href: "/dashboard/reports", label: "Reports", icon: FileText },
   { href: "/dashboard/data-editor", label: "Data Editor", icon: Pencil },
+  { href: "/dashboard/help", label: "Help & Docs", icon: BookOpen },
 ];
 
 export function DashboardSidebar() {
@@ -56,18 +57,6 @@ export function DashboardSidebar() {
         </SidebarContent>
         <SidebarFooter>
              <SidebarMenu>
-                <SidebarMenuItem>
-                    <SidebarMenuButton 
-                        asChild
-                        isActive={pathname === "/dashboard/help"} 
-                        className="justify-start" 
-                        tooltip="Help & Documentation">
-                        <Link href="/dashboard/help">
-                            <BookOpen className="size-5" />
-                            <span>Help & Docs</span>
-                        </Link>
-                    </SidebarMenuButton>
-                </SidebarMenuItem>
                 <SidebarMenuItem>
                     <SidebarMenuButton className="justify-start" tooltip="Settings">
                         <Settings className="size-5" />
