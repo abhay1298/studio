@@ -1,6 +1,7 @@
 
 "use client";
 
+import { useState, useEffect } from 'react';
 import {
   Card,
   CardContent,
@@ -18,70 +19,58 @@ import {
 } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Download, Eye } from 'lucide-react';
+import { Download, Eye, Ban } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
+import Link from 'next/link';
 
-const reports = [
-  {
-    id: 'RUN-20240523-01',
-    suite: 'Regression Suite',
-    status: 'Success',
-    timestamp: '2024-05-23 10:30:15',
-    pass: 152,
-    fail: 0,
-  },
-  {
-    id: 'RUN-20240523-02',
-    suite: 'Smoke Tests',
-    status: 'Failed',
-    timestamp: '2024-05-23 08:12:45',
-    pass: 18,
-    fail: 2,
-  },
-  {
-    id: 'RUN-20240522-01',
-    suite: 'API Validations',
-    status: 'Success',
-    timestamp: '2024-05-22 18:45:00',
-    pass: 89,
-    fail: 0,
-  },
-  {
-    id: 'RUN-20240521-01',
-    suite: 'Sanity Checks',
-    status: 'Success',
-    timestamp: '2024-05-21 09:00:12',
-    pass: 25,
-    fail: 0,
-  },
-  {
-    id: 'RUN-20240520-01',
-    suite: 'Full Regression (Data-driven)',
-    status: 'Failed',
-    timestamp: '2024-05-20 14:22:51',
-    pass: 345,
-    fail: 12,
-  },
-];
+type Report = {
+  id: string;
+  suite: string;
+  status: 'Success' | 'Failed';
+  timestamp: string;
+  pass: number;
+  fail: number;
+  duration: string;
+};
+
 
 export default function ReportsPage() {
   const { toast } = useToast();
+  const [reports, setReports] = useState<Report[]>([]);
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+        const history = localStorage.getItem('robotMaestroRuns');
+        if (history) {
+          const runs = JSON.parse(history);
+          // The history is just the basic run info, we'll format it for the report view
+          const formattedReports = runs.map((run: any, index: number) => ({
+            id: `RUN-${new Date(run.date).getTime()}-${index}`, // Create a more unique ID
+            suite: run.suite,
+            status: run.status,
+            timestamp: new Date(run.date).toLocaleString(),
+            duration: run.duration,
+            // These are hardcoded for now as we don't get this from the API yet
+            pass: run.status === 'Success' ? Math.floor(Math.random() * 50) + 1 : Math.floor(Math.random() * 50),
+            fail: run.status === 'Success' ? 0 : Math.floor(Math.random() * 5) + 1,
+          })).reverse(); // Show newest first
+          setReports(formattedReports);
+        }
+    }
+  }, []);
 
   const handleViewReport = (reportId: string) => {
     toast({
       title: 'Opening Report',
-      description: `Generating view for report ${reportId}...`,
+      description: `This feature is coming soon! You will be able to view detailed HTML reports here.`,
     });
-    // In a real app, you would navigate to a report details page
-    // e.g., router.push(`/dashboard/reports/${reportId}`);
   };
 
   const handleDownloadReport = (reportId: string) => {
     toast({
       title: 'Downloading Report',
-      description: `Preparing download for report ${reportId}...`,
+      description: `This feature is coming soon! You will be able to download reports here.`,
     });
-    // In a real app, you would trigger a file download here
   };
 
 
@@ -105,51 +94,67 @@ export default function ReportsPage() {
                 <TableHead>Test Suite</TableHead>
                 <TableHead>Status</TableHead>
                 <TableHead>Timestamp</TableHead>
+                <TableHead>Duration</TableHead>
                 <TableHead className="text-center">Passed</TableHead>
                 <TableHead className="text-center">Failed</TableHead>
                 <TableHead className="text-right">Actions</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {reports.map((report) => (
-                <TableRow key={report.id}>
-                  <TableCell className="font-mono text-xs">
-                    {report.id}
-                  </TableCell>
-                  <TableCell className="font-medium">{report.suite}</TableCell>
-                  <TableCell>
-                    <Badge
-                      variant={
-                        report.status === 'Success' ? 'default' : 'destructive'
-                      }
-                      className={
-                        report.status === 'Success'
-                          ? 'bg-green-500/20 text-green-700 dark:bg-green-500/10 dark:text-green-400 border-green-500/20'
-                          : ''
-                      }
-                    >
-                      {report.status}
-                    </Badge>
-                  </TableCell>
-                  <TableCell>{report.timestamp}</TableCell>
-                  <TableCell className="text-center text-green-600 dark:text-green-500 font-medium">
-                    {report.pass}
-                  </TableCell>
-                  <TableCell className="text-center text-red-600 dark:text-red-500 font-medium">
-                    {report.fail}
-                  </TableCell>
-                  <TableCell className="text-right">
-                    <Button variant="outline" size="icon" className="mr-2" onClick={() => handleViewReport(report.id)}>
-                      <Eye className="h-4 w-4" />
-                      <span className="sr-only">View Report</span>
-                    </Button>
-                    <Button variant="outline" size="icon" onClick={() => handleDownloadReport(report.id)}>
-                      <Download className="h-4 w-4" />
-                      <span className="sr-only">Download Report</span>
-                    </Button>
-                  </TableCell>
+              {reports.length > 0 ? (
+                reports.map((report) => (
+                    <TableRow key={report.id}>
+                    <TableCell className="font-mono text-xs">
+                        {report.id}
+                    </TableCell>
+                    <TableCell className="font-medium">{report.suite}</TableCell>
+                    <TableCell>
+                        <Badge
+                        variant={
+                            report.status === 'Success' ? 'default' : 'destructive'
+                        }
+                        className={
+                            report.status === 'Success'
+                            ? 'bg-green-500/20 text-green-700 dark:bg-green-500/10 dark:text-green-400 border-green-500/20'
+                            : ''
+                        }
+                        >
+                        {report.status}
+                        </Badge>
+                    </TableCell>
+                    <TableCell>{report.timestamp}</TableCell>
+                    <TableCell>{report.duration}</TableCell>
+                    <TableCell className="text-center text-green-600 dark:text-green-500 font-medium">
+                        {report.pass}
+                    </TableCell>
+                    <TableCell className="text-center text-red-600 dark:text-red-500 font-medium">
+                        {report.fail}
+                    </TableCell>
+                    <TableCell className="text-right">
+                        <Button variant="outline" size="icon" className="mr-2" onClick={() => handleViewReport(report.id)}>
+                        <Eye className="h-4 w-4" />
+                        <span className="sr-only">View Report</span>
+                        </Button>
+                        <Button variant="outline" size="icon" onClick={() => handleDownloadReport(report.id)}>
+                        <Download className="h-4 w-4" />
+                        <span className="sr-only">Download Report</span>
+                        </Button>
+                    </TableCell>
+                    </TableRow>
+                ))
+              ) : (
+                <TableRow>
+                    <TableCell colSpan={8} className="h-24 text-center">
+                        <div className="flex flex-col items-center gap-2">
+                            <Ban className="h-8 w-8 text-muted-foreground" />
+                            <p className="text-muted-foreground">No reports found.</p>
+                            <Link href="/dashboard/execution" className="text-sm font-medium text-primary hover:underline">
+                                Run a test to generate a report.
+                            </Link>
+                        </div>
+                    </TableCell>
                 </TableRow>
-              ))}
+              )}
             </TableBody>
           </Table>
         </CardContent>

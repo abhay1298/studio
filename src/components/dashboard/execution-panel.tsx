@@ -1,7 +1,7 @@
 
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState } from "react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Card,
@@ -14,7 +14,6 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Progress } from "@/components/ui/progress";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import {
   AlertCircle,
@@ -49,6 +48,38 @@ export function ExecutionPanel({ isDataFileUploaded }: ExecutionPanelProps) {
     setRunConfig(prev => ({...prev, [field]: value}));
   };
 
+  const saveRunToHistory = (suiteName: string, status: 'Success' | 'Failed', duration: string) => {
+      if (typeof window !== 'undefined') {
+          const newRun = {
+              suite: suiteName,
+              status,
+              duration,
+              date: new Date().toISOString(),
+          };
+          const history = localStorage.getItem('robotMaestroRuns');
+          const runs = history ? JSON.parse(history) : [];
+          runs.push(newRun);
+          localStorage.setItem('robotMaestroRuns', JSON.stringify(runs));
+          // Dispatch an event to notify other components that runs have been updated
+          window.dispatchEvent(new CustomEvent('runsUpdated'));
+      }
+  };
+
+  const getSuiteNameForRun = (runType: string) => {
+    switch (runType) {
+        case 'By Tag':
+            return `Tags: ${runConfig.includeTags || 'all'}`;
+        case 'By Suite':
+            return `Suite: ${runConfig.suite || 'all'}`;
+        case 'By Test Case':
+            return `Test: ${runConfig.testcase || 'all'}`;
+        case 'Orchestrator':
+            return 'Orchestrator Run';
+        default:
+            return 'Unnamed Run';
+    }
+  }
+
   const handleRun = async (runType: string) => {
     if (runType === "Orchestrator" && !isDataFileUploaded) {
       toast({
@@ -60,14 +91,13 @@ export function ExecutionPanel({ isDataFileUploaded }: ExecutionPanelProps) {
       return;
     }
     
-    setLogs("Starting execution...\n");
+    setLogs(`[${new Date().toLocaleTimeString()}] Starting execution...\n`);
     setStatus("running");
     setLastFailedLogs('');
     toast({ title: `Starting ${runType} run...` });
+    const startTime = Date.now();
 
     try {
-      // In a real app, you'd send the files too.
-      // This is simplified to send just the config.
       const response = await fetch('/api/run-tests', {
         method: 'POST',
         headers: {
@@ -77,17 +107,24 @@ export function ExecutionPanel({ isDataFileUploaded }: ExecutionPanelProps) {
       });
 
       if (!response.ok) {
-        throw new Error('Server error');
+        const errorText = await response.text();
+        throw new Error(errorText || 'Server error');
       }
 
       const result = await response.json();
+      const endTime = Date.now();
+      const duration = ((endTime - startTime) / 1000).toFixed(2) + 's';
+      const suiteName = getSuiteNameForRun(runType);
 
-      setLogs(result.logs);
+      setLogs(currentLogs => currentLogs + result.logs);
       setStatus(result.status);
+      saveRunToHistory(suiteName, result.status === 'success' ? 'Success' : 'Failed', duration);
+
 
       if (result.status === 'success') {
         toast({
           title: "Job Completed Successfully",
+          description: `Run finished in ${duration}.`,
           action: <CheckCircle2 className="text-green-500" />,
         });
       } else if (result.status === 'failed') {
@@ -102,9 +139,13 @@ export function ExecutionPanel({ isDataFileUploaded }: ExecutionPanelProps) {
 
     } catch (error) {
       console.error("Execution failed:", error);
+      const endTime = Date.now();
+      const duration = ((endTime - startTime) / 1000).toFixed(2) + 's';
+      const suiteName = getSuiteNameForRun(runType);
       const errorMessage = error instanceof Error ? error.message : "An unknown error occurred.";
-      setLogs(`Execution failed: ${errorMessage}`);
+      setLogs(currentLogs => currentLogs + `\n[${new Date().toLocaleTimeString()}] Execution failed: ${errorMessage}`);
       setStatus("failed");
+      saveRunToHistory(suiteName, 'Failed', duration);
       toast({
         variant: "destructive",
         title: "Execution Error",
@@ -188,13 +229,13 @@ export function ExecutionPanel({ isDataFileUploaded }: ExecutionPanelProps) {
             <CardDescription>Live logs from the test execution.</CardDescription>
           </CardHeader>
           <CardContent>
-            {isRunning && <Progress value={100} className="w-full mb-4 animate-pulse" />}
             <ScrollArea className="h-72 w-full rounded-md border bg-muted p-4">
               <pre className="text-sm font-code whitespace-pre-wrap">{logs}</pre>
             </ScrollArea>
           </CardContent>
           <CardFooter className="flex justify-between">
             <div className="flex items-center gap-2">
+              {status === "running" && <Loader2 className="h-5 w-5 animate-spin" />}
               {status === "success" && <CheckCircle2 className="h-5 w-5 text-green-500" />}
               {status === "failed" && <XCircle className="h-5 w-5 text-destructive" />}
               <span className="text-sm font-medium">

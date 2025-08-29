@@ -1,3 +1,4 @@
+
 "use client";
 
 import {
@@ -26,15 +27,12 @@ import {
   CartesianGrid,
   Cell,
 } from 'recharts';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import { BarChart3 } from 'lucide-react';
+import Link from 'next/link';
 
-const chartData = [
-  { month: 'January', passed: 186, failed: 80 },
-  { month: 'February', passed: 305, failed: 200 },
-  { month: 'March', passed: 237, failed: 120 },
-  { month: 'April', passed: 73, failed: 190 },
-  { month: 'May', passed: 209, failed: 130 },
-  { month: 'June', passed: 214, failed: 140 },
-];
+// NOTE: The chart data is currently removed.
+// We will wire this up to the real execution data in a future step.
 
 const chartConfig = {
   passed: {
@@ -47,55 +45,28 @@ const chartConfig = {
   },
 };
 
-const pieChartData = [
-    { browser: 'chrome', tests: 275, fill: 'hsl(var(--chart-1))' },
-    { browser: 'firefox', tests: 200, fill: 'hsl(var(--chart-2))' },
-    { browser: 'safari', tests: 187, fill: 'hsl(var(--chart-3))' },
-    { browser: 'edge', tests: 173, fill: 'hsl(var(--chart-4))' },
-    { browser: 'other', tests: 90, fill: 'hsl(var(--muted))' },
-]
-
 export default function ResultsPage() {
   return (
     <div className="space-y-6">
       <h1 className="font-headline text-3xl font-bold tracking-tight">
         Results & Visualization
       </h1>
+      <Alert>
+        <BarChart3 className="h-4 w-4" />
+        <AlertTitle>Coming Soon!</AlertTitle>
+        <AlertDescription>
+            These charts will be dynamically populated with data from your test runs. 
+            Run some tests from the <Link href="/dashboard/execution" className="font-medium text-primary hover:underline">Execution</Link> page to start generating data.
+        </AlertDescription>
+      </Alert>
       <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
         <Card>
           <CardHeader>
             <CardTitle className="font-headline">Execution Trends</CardTitle>
             <CardDescription>Monthly pass/fail rates</CardDescription>
           </CardHeader>
-          <CardContent>
-            <ChartContainer config={chartConfig} className="h-[250px] w-full">
-              <BarChartComponent accessibilityLayer data={chartData}>
-                <CartesianGrid vertical={false} />
-                <XAxis
-                  dataKey="month"
-                  tickLine={false}
-                  tickMargin={10}
-                  axisLine={false}
-                  tickFormatter={(value) => value.slice(0, 3)}
-                />
-                 <YAxis />
-                <ChartTooltip
-                  cursor={false}
-                  content={<ChartTooltipContent indicator="dot" />}
-                />
-                <ChartLegend content={<ChartLegendContent />} />
-                <Bar
-                  dataKey="passed"
-                  fill="var(--color-passed)"
-                  radius={4}
-                />
-                <Bar
-                  dataKey="failed"
-                  fill="var(--color-failed)"
-                  radius={4}
-                />
-              </BarChartComponent>
-            </ChartContainer>
+          <CardContent className="flex items-center justify-center h-[250px] text-muted-foreground">
+            No data available yet.
           </CardContent>
         </Card>
         
@@ -104,18 +75,8 @@ export default function ResultsPage() {
             <CardTitle className="font-headline">Execution by Browser</CardTitle>
             <CardDescription>Distribution of tests across browsers</CardDescription>
           </CardHeader>
-          <CardContent>
-            <ChartContainer config={{}} className="h-[250px] w-full">
-               <PieChartComponent>
-                  <ChartTooltip cursor={false} content={<ChartTooltipContent hideLabel />} />
-                  <Pie data={pieChartData} dataKey="tests" nameKey="browser" innerRadius={60} strokeWidth={5}>
-                     {pieChartData.map((entry, index) => (
-                        <Cell key={`cell-${index}`} fill={entry.fill} />
-                     ))}
-                  </Pie>
-                  <ChartLegend content={<ChartLegendContent />} />
-                </PieChartComponent>
-            </ChartContainer>
+          <CardContent className="flex items-center justify-center h-[250px] text-muted-foreground">
+            No data available yet.
           </CardContent>
         </Card>
 
@@ -124,40 +85,8 @@ export default function ResultsPage() {
             <CardTitle className="font-headline">Average Test Duration</CardTitle>
             <CardDescription>Trend of average test completion time</CardDescription>
           </CardHeader>
-          <CardContent>
-             <ChartContainer config={chartConfig} className="h-[250px] w-full">
-              <LineChartComponent accessibilityLayer data={chartData} margin={{ left: 12, right: 12 }}>
-                <CartesianGrid vertical={false} />
-                <XAxis
-                  dataKey="month"
-                  tickLine={false}
-                  axisLine={false}
-                  tickMargin={8}
-                  tickFormatter={(value) => value.slice(0, 3)}
-                />
-                <YAxis
-                  tickFormatter={(value) => `${value}s`}
-                />
-                <ChartTooltip cursor={false} content={<ChartTooltipContent />} />
-                <ChartLegend content={<ChartLegendContent />} />
-                <Line
-                  dataKey="passed"
-                  type="monotone"
-                  stroke="var(--color-passed)"
-                  strokeWidth={2}
-                  dot={true}
-                  name="Avg. Pass Duration"
-                />
-                 <Line
-                  dataKey="failed"
-                  type="monotone"
-                  stroke="var(--color-failed)"
-                  strokeWidth={2}
-                  dot={true}
-                  name="Avg. Fail Duration"
-                />
-              </LineChartComponent>
-            </ChartContainer>
+          <CardContent className="flex items-center justify-center h-[250px] text-muted-foreground">
+             No data available yet.
           </CardContent>
         </Card>
       </div>
