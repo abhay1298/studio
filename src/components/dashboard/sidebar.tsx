@@ -37,16 +37,17 @@ export function DashboardSidebar() {
             <SidebarMenu>
                 {menuItems.map((item) => (
                     <SidebarMenuItem key={item.href}>
-                        <Link href={item.href} passHref legacyBehavior>
-                            <SidebarMenuButton
-                                isActive={pathname === item.href}
-                                tooltip={item.label}
-                                className="justify-start"
-                            >
+                        <SidebarMenuButton
+                            asChild
+                            isActive={pathname === item.href}
+                            tooltip={item.label}
+                            className="justify-start"
+                        >
+                            <Link href={item.href}>
                                 <item.icon className="size-5" />
                                 <span>{item.label}</span>
-                            </SidebarMenuButton>
-                        </Link>
+                            </Link>
+                        </SidebarMenuButton>
                     </SidebarMenuItem>
                 ))}
             </SidebarMenu>
@@ -54,15 +55,16 @@ export function DashboardSidebar() {
         <SidebarFooter>
              <SidebarMenu>
                 <SidebarMenuItem>
-                    <Link href="/dashboard/help" passHref legacyBehavior>
-                        <SidebarMenuButton 
-                            isActive={pathname === "/dashboard/help"} 
-                            className="justify-start" 
-                            tooltip="Help & Documentation">
+                    <SidebarMenuButton 
+                        asChild
+                        isActive={pathname === "/dashboard/help"} 
+                        className="justify-start" 
+                        tooltip="Help & Documentation">
+                        <Link href="/dashboard/help">
                             <BookOpen className="size-5" />
                             <span>Help & Docs</span>
-                        </SidebarMenuButton>
-                    </Link>
+                        </Link>
+                    </SidebarMenuButton>
                 </SidebarMenuItem>
                 <SidebarMenuItem>
                     <SidebarMenuButton className="justify-start" tooltip="Settings">
