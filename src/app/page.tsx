@@ -43,7 +43,7 @@ export default function LoginPage() {
       <div ref={cardRef} className="w-full max-w-md glow-card rounded-xl p-px animate-in fade-in-50 slide-in-from-bottom-10 duration-1000">
         <div className="rounded-[calc(0.75rem-1px)] bg-card/80 backdrop-blur-sm">
           <div className="mb-8 flex flex-col items-center text-center pt-10">
-            <div className="mb-4 rounded-full bg-primary/10 p-4 text-primary animate-in fade-in-50 zoom-in-75 delay-300 duration-500">
+            <div className="mb-4 rounded-full bg-primary/10 p-4 text-primary animate-bounce">
               <Bot className="h-12 w-12" />
             </div>
             <h1 className="font-headline text-4xl font-bold tracking-tighter text-primary animate-in fade-in-50 slide-in-from-bottom-5 delay-500 duration-500">
