@@ -1,3 +1,4 @@
+
 "use client";
 
 import {
@@ -32,8 +33,15 @@ import { SidebarTrigger } from "../ui/sidebar";
 import { ThemeToggle } from "../theme-toggle";
 import { Button } from "../ui/button";
 import Image from "next/image";
+import { useRouter } from "next/navigation";
 
 export function DashboardHeader() {
+  const router = useRouter();
+
+  const handleLogout = () => {
+    router.push("/");
+  };
+
   return (
     <header className="flex h-14 items-center gap-4 border-b bg-card px-4 lg:h-[60px] lg:px-6 sticky top-0 z-30">
         <SidebarTrigger className="md:hidden" />
@@ -69,7 +77,7 @@ export function DashboardHeader() {
             <DropdownMenuItem>Settings</DropdownMenuItem>
             <DropdownMenuItem>Support</DropdownMenuItem>
             <DropdownMenuSeparator />
-            <DropdownMenuItem>Logout</DropdownMenuItem>
+            <DropdownMenuItem onClick={handleLogout}>Logout</DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
       </div>
