@@ -34,12 +34,21 @@ import { ThemeToggle } from "../theme-toggle";
 import { Button } from "../ui/button";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
+import { useToast } from "@/hooks/use-toast";
 
 export function DashboardHeader() {
   const router = useRouter();
+  const { toast } = useToast();
 
   const handleLogout = () => {
     router.push("/");
+  };
+
+  const handleComingSoon = (feature: string) => {
+    toast({
+      title: `${feature} page is under construction`,
+      description: "This feature is not yet implemented.",
+    });
   };
 
   return (
@@ -74,8 +83,8 @@ export function DashboardHeader() {
           <DropdownMenuContent align="end">
             <DropdownMenuLabel>My Account</DropdownMenuLabel>
             <DropdownMenuSeparator />
-            <DropdownMenuItem>Settings</DropdownMenuItem>
-            <DropdownMenuItem>Support</DropdownMenuItem>
+            <DropdownMenuItem onClick={() => handleComingSoon('Settings')}>Settings</DropdownMenuItem>
+            <DropdownMenuItem onClick={() => handleComingSoon('Support')}>Support</DropdownMenuItem>
             <DropdownMenuSeparator />
             <DropdownMenuItem onClick={handleLogout}>Logout</DropdownMenuItem>
           </DropdownMenuContent>
