@@ -111,12 +111,14 @@ export default function DashboardPage() {
                 An overview of your latest test runs.
               </CardDescription>
             </div>
-            <Button asChild size="sm" className="ml-auto gap-1">
-              <Link href="/dashboard/reports">
-                View All
-                <ArrowUpRight className="h-4 w-4" />
-              </Link>
-            </Button>
+            <Link href="/dashboard/reports" passHref legacyBehavior>
+              <Button asChild size="sm" className="ml-auto gap-1">
+                <a>
+                  View All
+                  <ArrowUpRight className="h-4 w-4" />
+                </a>
+              </Button>
+            </Link>
           </CardHeader>
           <CardContent>
             <Table>
