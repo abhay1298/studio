@@ -58,13 +58,11 @@ export function RegisterForm() {
 
       toast({
         title: "Registration Successful",
-        description: result.message,
+        description: "Redirecting you to the sign-in page...",
       });
 
-      // Redirect to login page after a short delay
-      setTimeout(() => {
-        router.push("/");
-      }, 2000);
+      // Redirect to login page immediately after success
+      router.push("/");
 
     } catch (error) {
       console.error("Registration failed:", error);
