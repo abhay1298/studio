@@ -19,7 +19,7 @@ import { UploadCloud, FileCheck2, FileWarning, FileX2, Pencil } from 'lucide-rea
 import { cn } from '@/lib/utils';
 
 type ProjectUploadProps = {
-  onProjectFileChange: (isUploaded: boolean) => void;
+  onProjectFileChange: (file: File | null) => void;
 };
 
 export function ProjectUpload({ onProjectFileChange }: ProjectUploadProps) {
@@ -35,7 +35,7 @@ export function ProjectUpload({ onProjectFileChange }: ProjectUploadProps) {
     const file = e.target.files?.[0];
     if (!file) {
       if (fileType === 'project') {
-        onProjectFileChange(false);
+        onProjectFileChange(null);
         setProjectFile(null);
       }
       if (fileType === 'data') {
@@ -60,9 +60,9 @@ export function ProjectUpload({ onProjectFileChange }: ProjectUploadProps) {
       if (allowedProjectTypes.includes(file.type)) {
         isValid = true;
         setProjectFile(file);
-        onProjectFileChange(true);
+        onProjectFileChange(file);
       } else {
-        onProjectFileChange(false);
+        onProjectFileChange(null);
         setProjectFile(null);
       }
     } else if (fileType === 'data') {

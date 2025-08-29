@@ -32,7 +32,7 @@ type RecentRun = {
 };
 
 export default function DashboardPage() {
-  const [isProjectFileUploaded, setIsProjectFileUploaded] = useState(false);
+  const [projectFile, setProjectFile] = useState<File | null>(null);
   const [recentRuns, setRecentRuns] = useState<RecentRun[]>([]);
   const [stats, setStats] = useState({
     totalRuns: 0,
@@ -109,7 +109,7 @@ export default function DashboardPage() {
           <Card>
             <CardHeader className="pb-2">
               <CardDescription>Active Projects</CardDescription>
-              <CardTitle className="font-headline text-4xl">{isProjectFileUploaded ? 1 : 0}</CardTitle>
+              <CardTitle className="font-headline text-4xl">{projectFile ? 1 : 0}</CardTitle>
             </CardHeader>
             <CardContent>
               <div className="text-xs text-muted-foreground">
@@ -194,8 +194,8 @@ export default function DashboardPage() {
         </Card>
       </div>
       <div className="grid auto-rows-max items-start gap-4 md:gap-8">
-        <ProjectUpload onProjectFileChange={setIsProjectFileUploaded} />
-        <DependencyChecker isProjectFileUploaded={isProjectFileUploaded} />
+        <ProjectUpload onProjectFileChange={setProjectFile} />
+        <DependencyChecker projectFile={projectFile} />
       </div>
     </div>
   );

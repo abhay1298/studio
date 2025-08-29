@@ -1,7 +1,7 @@
 
 "use client";
 
-import { useState } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import {
   Card,
   CardContent,
@@ -11,110 +11,154 @@ import {
 } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
-import { CheckCircle2, AlertTriangle, XCircle, Loader2 } from 'lucide-react';
+import { CheckCircle2, AlertTriangle, XCircle, Loader2, ListTodo, PackageCheck, PackagePlus } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
+import { DependencyStatusDialog } from './dependency-status-dialog';
 
-type Status = 'idle' | 'checking' | 'success' | 'warning' | 'error';
-type DependencyCheckerProps = {
-  isProjectFileUploaded: boolean;
+
+type Status = 'idle' | 'checking' | 'success' | 'warning' | 'error' | 'installing';
+export type DependencyStatus = {
+    library: string;
+    status: 'installed' | 'missing';
 };
 
-const missingLibraries = ['robotframework-requests', 'robotframework-seleniumlibrary'];
+type DependencyCheckerProps = {
+  projectFile: File | null;
+};
 
-export function DependencyChecker({ isProjectFileUploaded }: DependencyCheckerProps) {
+export function DependencyChecker({ projectFile }: DependencyCheckerProps) {
   const [status, setStatus] = useState<Status>('idle');
-  const [isInstalling, setIsInstalling] = useState(false);
+  const [dependencyStatus, setDependencyStatus] = useState<DependencyStatus[]>([]);
+  const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [requirementsContent, setRequirementsContent] = useState<string | null>(null);
   const { toast } = useToast();
 
+  const getRequirementsFromZip = useCallback(async () => {
+    if (!projectFile) return null;
+    // This is a placeholder. In a real app with a library like JSZip,
+    // you would unzip and read the file here.
+    // For now, we'll assume a dummy requirements.txt for demonstration.
+    if (projectFile.name.includes('no-deps')) {
+        return null; // Simulate no requirements.txt
+    }
+    if (projectFile.name.includes('all-missing')) {
+        return 'robotframework-requests\nrobotframework-seleniumlibrary\nrobotframework-faker';
+    }
+    return 'robotframework-requests\nrobotframework-seleniumlibrary';
 
-  const handleCheckDependencies = () => {
+  }, [projectFile]);
+
+
+  useEffect(() => {
+    const processFile = async () => {
+        setStatus('idle');
+        setDependencyStatus([]);
+        const reqContent = await getRequirementsFromZip();
+        setRequirementsContent(reqContent);
+    };
+    processFile();
+  }, [projectFile, getRequirementsFromZip]);
+
+
+  const handleCheckDependencies = async () => {
+    if (!requirementsContent) {
+        setStatus('warning');
+        return;
+    }
     setStatus('checking');
-    setTimeout(() => {
-      // Randomly pick a status for demonstration
-      const randomStatus = ['success', 'warning', 'error'][Math.floor(Math.random() * 3)] as Status;
-      setStatus(randomStatus);
-    }, 1500);
+    try {
+      const response = await fetch('/api/check-dependencies', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ requirements: requirementsContent }),
+      });
+      if (!response.ok) throw new Error('Failed to check dependencies.');
+
+      const result: DependencyStatus[] = await response.json();
+      setDependencyStatus(result);
+      if (result.every(d => d.status === 'installed')) {
+        setStatus('success');
+      } else {
+        setStatus('error');
+      }
+    } catch (error) {
+      toast({ variant: 'destructive', title: 'Error', description: 'Could not connect to the dependency checker service.' });
+      setStatus('idle');
+    }
   };
 
   const handleInstallMissing = () => {
-    setIsInstalling(true);
+    setStatus('installing');
     toast({
         title: 'Installation in Progress',
-        description: 'Installing missing libraries... This may take a moment.',
+        description: 'This may take a moment...',
     });
     setTimeout(() => {
-        setIsInstalling(false);
+        const newStatuses = dependencyStatus.map(d => ({ ...d, status: 'installed' as 'installed' }));
+        setDependencyStatus(newStatuses);
         setStatus('success');
+        setIsDialogOpen(false);
         toast({
             title: 'Installation Complete',
             description: 'All missing libraries have been installed.',
+            action: <CheckCircle2 className="text-green-500" />
         });
     }, 3000);
   };
 
-  const renderStatus = () => {
-    switch (status) {
-      case 'checking':
-        return (
-          <Alert>
-            <Loader2 className="h-4 w-4 animate-spin" />
-            <AlertTitle>Checking...</AlertTitle>
-            <AlertDescription>Scanning your project dependencies.</AlertDescription>
-          </Alert>
-        );
-      case 'success':
-        return (
-          <Alert className="border-green-500/50 text-green-700 dark:border-green-500/50 dark:text-green-400">
-            <CheckCircle2 className="h-4 w-4 !text-green-500" />
-            <AlertTitle>Success</AlertTitle>
-            <AlertDescription>All required items are installed.</AlertDescription>
-          </Alert>
-        );
-      case 'warning':
-        return (
-          <Alert className="border-yellow-500/50 text-yellow-700 dark:border-yellow-500/50 dark:text-yellow-400">
-            <AlertTriangle className="h-4 w-4 !text-yellow-500" />
-            <AlertTitle>Warning</AlertTitle>
-            <AlertDescription>requirements.txt not found. Please provide one for a complete check.</AlertDescription>
-          </Alert>
-        );
-      case 'error':
-        return (
-          <Alert variant="destructive">
-            <XCircle className="h-4 w-4" />
-            <AlertTitle>Missing Dependencies</AlertTitle>
-            <AlertDescription>
-              The following libraries are missing:
-              <ul className="list-disc pl-5 mt-2">
-                {missingLibraries.map(lib => <li key={lib}>{lib}</li>)}
-              </ul>
-            </AlertDescription>
-            <Button size="sm" className="mt-4 w-full" onClick={handleInstallMissing} disabled={isInstalling}>
-                {isInstalling && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                Install Missing Libraries
-            </Button>
-          </Alert>
-        );
-      default:
-        return null;
-    }
-  };
+  const missingCount = dependencyStatus.filter(d => d.status === 'missing').length;
 
   return (
+    <>
     <Card>
       <CardHeader>
         <CardTitle className="font-headline">Dependency Checker</CardTitle>
         <CardDescription>
-          Upload a project to scan for missing libraries.
+          {projectFile ? "Scan your project for missing libraries." : "Upload a project to scan dependencies."}
         </CardDescription>
       </CardHeader>
       <CardContent className="grid gap-4">
-        <Button onClick={handleCheckDependencies} disabled={status === 'checking' || !isProjectFileUploaded}>
-          {status === 'checking' && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-          Check Dependencies
+        <Button onClick={handleCheckDependencies} disabled={status === 'checking' || !projectFile}>
+          {status === 'checking' ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <ListTodo className="mr-2 h-4 w-4" />}
+          Scan Dependencies
         </Button>
-        {status !== 'idle' && <div className="mt-4">{renderStatus()}</div>}
+        {status === 'warning' && (
+            <Alert variant="destructive">
+                <AlertTriangle className="h-4 w-4" />
+                <AlertTitle>Not Found</AlertTitle>
+                <AlertDescription>A `requirements.txt` file was not found in your project zip.</AlertDescription>
+            </Alert>
+        )}
+        {status === 'success' && (
+             <Alert className="border-green-500/50 text-green-700 dark:border-green-500/50 dark:text-green-400">
+                <PackageCheck className="h-4 w-4 !text-green-500" />
+                <AlertTitle>All Dependencies Installed</AlertTitle>
+                <AlertDescription>Your environment is ready for execution.</AlertDescription>
+            </Alert>
+        )}
+        {status === 'error' && (
+             <Alert variant="destructive">
+                <XCircle className="h-4 w-4" />
+                <AlertTitle>Missing Dependencies Found</AlertTitle>
+                <AlertDescription>
+                    {missingCount} required librar{missingCount > 1 ? 'ies are' : 'y is'} missing.
+                </AlertDescription>
+                <Button size="sm" className="mt-4 w-full" onClick={() => setIsDialogOpen(true)}>
+                    <PackagePlus className="mr-2 h-4 w-4" />
+                    View & Install
+                </Button>
+            </Alert>
+        )}
+
       </CardContent>
     </Card>
+    <DependencyStatusDialog
+        isOpen={isDialogOpen}
+        onOpenChange={setIsDialogOpen}
+        status={dependencyStatus}
+        onInstall={handleInstallMissing}
+        isInstalling={status === 'installing'}
+    />
+    </>
   );
 }
