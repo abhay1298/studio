@@ -2,17 +2,20 @@
 "use client";
 
 import { useState } from 'react';
+import { useRouter } from 'next/navigation';
 import {
   Card,
   CardContent,
   CardDescription,
   CardHeader,
   CardTitle,
+  CardFooter,
 } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Button } from '@/components/ui/button';
 import { useToast } from '@/hooks/use-toast';
-import { UploadCloud, FileCheck2, FileWarning, FileX2 } from 'lucide-react';
+import { UploadCloud, FileCheck2, FileWarning, FileX2, Pencil } from 'lucide-react';
 
 type ProjectUploadProps = {
   onDataFileChange: (isUploaded: boolean) => void;
@@ -21,6 +24,7 @@ type ProjectUploadProps = {
 
 export function ProjectUpload({ onDataFileChange, onProjectFileChange }: ProjectUploadProps) {
   const { toast } = useToast();
+  const router = useRouter();
   const [projectFile, setProjectFile] = useState<File | null>(null);
   const [dataFile, setDataFile] = useState<File | null>(null);
 
@@ -37,6 +41,10 @@ export function ProjectUpload({ onDataFileChange, onProjectFileChange }: Project
       if (fileType === 'data') {
         onDataFileChange(false);
         setDataFile(null);
+        if (typeof window !== 'undefined') {
+          sessionStorage.removeItem('uploadedDataFile');
+          sessionStorage.removeItem('uploadedDataFileName');
+        }
       }
       return;
     }
@@ -48,6 +56,8 @@ export function ProjectUpload({ onDataFileChange, onProjectFileChange }: Project
     ];
 
     let isValid = false;
+    let isData = false;
+
     if (fileType === 'project') {
       if (allowedProjectTypes.includes(file.type)) {
         isValid = true;
@@ -58,13 +68,27 @@ export function ProjectUpload({ onDataFileChange, onProjectFileChange }: Project
         setProjectFile(null);
       }
     } else if (fileType === 'data') {
+      isData = true;
       if (allowedDataTypes.includes(file.type)) {
         isValid = true;
         setDataFile(file);
         onDataFileChange(true);
+        // Store the file in session storage to pass to the editor page
+        const reader = new FileReader();
+        reader.onload = function(event) {
+          if (typeof window !== 'undefined' && event.target?.result) {
+            sessionStorage.setItem('uploadedDataFile', event.target.result as string);
+            sessionStorage.setItem('uploadedDataFileName', file.name);
+          }
+        };
+        reader.readAsDataURL(file);
       } else {
         onDataFileChange(false);
         setDataFile(null);
+         if (typeof window !== 'undefined') {
+          sessionStorage.removeItem('uploadedDataFile');
+          sessionStorage.removeItem('uploadedDataFileName');
+        }
       }
     }
 
@@ -75,7 +99,7 @@ export function ProjectUpload({ onDataFileChange, onProjectFileChange }: Project
         action: <FileCheck2 className="text-green-500" />,
       });
     } else {
-      if (file.size === 0) {
+       if (file.size === 0) {
         toast({
           variant: 'destructive',
           title: 'Warning: Empty File',
@@ -92,6 +116,11 @@ export function ProjectUpload({ onDataFileChange, onProjectFileChange }: Project
       }
     }
   };
+
+  const handleEditClick = () => {
+    router.push('/dashboard/data-editor');
+  };
+
 
   return (
     <Card>
@@ -129,6 +158,14 @@ export function ProjectUpload({ onDataFileChange, onProjectFileChange }: Project
           </div>
         </div>
       </CardContent>
+       {dataFile && (
+        <CardFooter>
+          <Button variant="outline" className="w-full" onClick={handleEditClick}>
+            <Pencil className="mr-2 h-4 w-4" />
+            View & Edit Data File
+          </Button>
+        </CardFooter>
+      )}
     </Card>
   );
 }

@@ -1,3 +1,4 @@
+
 "use client";
 
 import {
@@ -9,7 +10,7 @@ import {
   SidebarFooter,
   SidebarContent
 } from "@/components/ui/sidebar";
-import { Bot, LayoutDashboard, PlayCircle, BarChart3, FileText, Settings, LifeBuoy, BookOpen } from "lucide-react";
+import { Bot, LayoutDashboard, PlayCircle, BarChart3, FileText, Settings, LifeBuoy, BookOpen, Pencil } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
@@ -18,6 +19,7 @@ const menuItems = [
   { href: "/dashboard/execution", label: "Execution", icon: PlayCircle },
   { href: "/dashboard/results", label: "Results", icon: BarChart3 },
   { href: "/dashboard/reports", label: "Reports", icon: FileText },
+  { href: "/dashboard/data-editor", label: "Data Editor", icon: Pencil },
 ];
 
 export function DashboardSidebar() {
