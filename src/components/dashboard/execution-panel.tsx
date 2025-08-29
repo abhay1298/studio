@@ -1,7 +1,7 @@
 
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Card,
@@ -41,16 +41,31 @@ export function ExecutionPanel() {
   const [lastFailedLogs, setLastFailedLogs] = useState('');
   const [isDataFileUploaded, setIsDataFileUploaded] = useState(false);
 
-  // This is a bit of a workaround to check for the session storage item
-  // and update the state accordingly.
-  if (typeof window !== 'undefined') {
-    const file = sessionStorage.getItem('uploadedDataFile');
-    if (file && !isDataFileUploaded) {
-      setIsDataFileUploaded(true);
-    } else if (!file && isDataFileUploaded) {
-      setIsDataFileUploaded(false);
-    }
-  }
+  useEffect(() => {
+    // This function will run on the client-side after the component mounts
+    // and whenever the component re-renders. It's a more reliable way
+    // to check the session storage for the data file.
+    const checkDataFile = () => {
+        if (typeof window !== 'undefined') {
+            const file = sessionStorage.getItem('uploadedDataFile');
+            setIsDataFileUploaded(!!file);
+        }
+    };
+    
+    checkDataFile();
+
+    // To ensure it updates if the user navigates back and forth,
+    // we can also listen for storage events, though this is more for
+    // cross-tab communication. A simpler approach for SPAs is to
+    // re-check on focus.
+    window.addEventListener('storage', checkDataFile);
+    window.addEventListener('focus', checkDataFile);
+
+    return () => {
+        window.removeEventListener('storage', checkDataFile);
+        window.removeEventListener('focus', checkDataFile);
+    };
+  }, []);
 
 
   const handleInputChange = (field: keyof typeof runConfig, value: string) => {
