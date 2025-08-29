@@ -17,7 +17,6 @@ import {
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardFooter } from "@/components/ui/card";
-import { useState } from "react";
 import { Loader2 } from "lucide-react";
 import { sendWelcomeEmail } from "@/ai/flows/send-welcome-email";
 
@@ -38,7 +37,6 @@ const formSchema = z
 export function RegisterForm() {
   const router = useRouter();
   const { toast } = useToast();
-  const [isLoading, setIsLoading] = useState(false);
 
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),
@@ -50,9 +48,9 @@ export function RegisterForm() {
     },
   });
 
-  async function onSubmit(values: z.infer<typeof formSchema>) {
-    setIsLoading(true);
+  const { isSubmitting } = form.formState;
 
+  async function onSubmit(values: z.infer<typeof formSchema>) {
     try {
       // In a real application, you would first save the user to a database.
       // Then, you would call the flow to send the welcome email.
@@ -75,7 +73,6 @@ export function RegisterForm() {
         title: "Registration Failed",
         description: "An unexpected error occurred. Please try again.",
       });
-      setIsLoading(false);
     }
   }
 
@@ -150,8 +147,8 @@ export function RegisterForm() {
             />
           </CardContent>
           <CardFooter>
-            <Button type="submit" className="w-full" disabled={isLoading}>
-              {isLoading && (
+            <Button type="submit" className="w-full" disabled={isSubmitting}>
+              {isSubmitting && (
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
               )}
               Create Account

@@ -18,7 +18,6 @@ import {
 import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Card, CardContent, CardFooter } from "@/components/ui/card";
-import { useState } from "react";
 import { Loader2 } from "lucide-react";
 
 const formSchema = z.object({
@@ -30,7 +29,6 @@ const formSchema = z.object({
 export function LoginForm() {
   const router = useRouter();
   const { toast } = useToast();
-  const [isLoading, setIsLoading] = useState(false);
 
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),
@@ -41,20 +39,22 @@ export function LoginForm() {
     },
   });
 
-  function onSubmit(values: z.infer<typeof formSchema>) {
-    setIsLoading(true);
+  const { isSubmitting } = form.formState;
 
-    // Mock authentication
-    setTimeout(() => {
-      if (typeof window !== 'undefined') {
-        localStorage.setItem('username', values.username);
-      }
-      toast({
-        title: "Login Successful",
-        description: `Welcome back, ${values.username}!`,
-      });
-      router.push("/dashboard");
-    }, 1000);
+  function onSubmit(values: z.infer<typeof formSchema>) {
+    return new Promise((resolve) => {
+      setTimeout(() => {
+        if (typeof window !== 'undefined') {
+          localStorage.setItem('username', values.username);
+        }
+        toast({
+          title: "Login Successful",
+          description: `Welcome back, ${values.username}!`,
+        });
+        router.push("/dashboard");
+        resolve(null);
+      }, 1000);
+    });
   }
 
   return (
@@ -111,8 +111,8 @@ export function LoginForm() {
             />
           </CardContent>
           <CardFooter>
-            <Button type="submit" className="w-full" disabled={isLoading}>
-              {isLoading && (
+            <Button type="submit" className="w-full" disabled={isSubmitting}>
+              {isSubmitting && (
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
               )}
               Sign In

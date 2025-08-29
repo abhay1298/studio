@@ -1,8 +1,23 @@
+
+"use client";
+
 import { LoginForm } from '@/components/auth/login-form';
 import { Bot } from 'lucide-react';
 import Link from 'next/link';
+import { useEffect, useState } from 'react';
 
 export default function LoginPage() {
+  const [lastLoginTime, setLastLoginTime] = useState('');
+
+  useEffect(() => {
+    setLastLoginTime(
+      new Date().toLocaleTimeString([], {
+        hour: '2-digit',
+        minute: '2-digit',
+      })
+    );
+  }, []);
+
   return (
     <div className="flex h-screen w-full items-center justify-center bg-background px-4">
       <div className="w-full max-w-md">
@@ -20,18 +35,15 @@ export default function LoginPage() {
         <LoginForm />
         <p className="mt-4 text-center text-sm text-muted-foreground">
           Don&apos;t have an account?{' '}
-          <Link href="/register" passHref>
-            <span className="font-medium text-primary hover:underline">Register</span>
+          <Link href="/register" className="font-medium text-primary hover:underline">
+            Register
           </Link>
         </p>
-        <p className="mt-8 text-center text-sm text-muted-foreground">
-          Last login: Today at{' '}
-          {new Date().toLocaleTimeString([], {
-            hour: '2-digit',
-            minute: '2-digit',
-          })}{' '}
-          from your location.
-        </p>
+        {lastLoginTime && (
+          <p className="mt-8 text-center text-sm text-muted-foreground">
+            Last login: Today at {lastLoginTime} from your location.
+          </p>
+        )}
       </div>
     </div>
   );
