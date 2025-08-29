@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useState, useEffect } from "react";
@@ -27,6 +28,10 @@ import { Alert, AlertDescription, AlertTitle } from "../ui/alert";
 import { AiAnalysisDialog } from "./ai-analysis-dialog";
 
 type ExecutionStatus = "idle" | "running" | "success" | "failed";
+
+type ExecutionPanelProps = {
+  isOrchestratorFileUploaded: boolean;
+};
 
 const mockSuccessLog = `
 ==============================================================================
@@ -65,12 +70,10 @@ Log:     /path/to/log.html
 Report:  /path/to/report.html
 `;
 
-export function ExecutionPanel() {
+export function ExecutionPanel({ isOrchestratorFileUploaded }: ExecutionPanelProps) {
   const [status, setStatus] = useState<ExecutionStatus>("idle");
   const [progress, setProgress] = useState(0);
   const [logs, setLogs] = useState("");
-  const [isOrchestratorFileUploaded, setIsOrchestratorFileUploaded] =
-    useState(true); // Mock state
   const { toast } = useToast();
 
   useEffect(() => {
@@ -125,7 +128,7 @@ export function ExecutionPanel() {
     if (runType === "Orchestrator" && !isOrchestratorFileUploaded) {
       toast({
         variant: "destructive",
-        title: "Excel not uploaded",
+        title: "Excel or CSV file not uploaded",
         description:
           "Please upload a CSV/Excel file to execute via Orchestrator.",
         action: <AlertCircle />,
@@ -197,7 +200,7 @@ export function ExecutionPanel() {
                   This mode will execute tests based on the uploaded Excel/CSV file. Ensure the file is uploaded and validated.
                 </AlertDescription>
               </Alert>
-              <Button onClick={() => handleRun("Orchestrator")} disabled={isRunning}>
+              <Button onClick={() => handleRun("Orchestrator")} disabled={isRunning || !isOrchestratorFileUploaded}>
                 {isRunning && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                 Run via Orchestrator
               </Button>

@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useState } from 'react';
@@ -13,7 +14,11 @@ import { Label } from '@/components/ui/label';
 import { useToast } from '@/hooks/use-toast';
 import { UploadCloud, FileCheck2, FileWarning, FileX2 } from 'lucide-react';
 
-export function ProjectUpload() {
+type ProjectUploadProps = {
+  onDataFileChange: (isUploaded: boolean) => void;
+};
+
+export function ProjectUpload({ onDataFileChange }: ProjectUploadProps) {
   const { toast } = useToast();
   const [projectFile, setProjectFile] = useState<File | null>(null);
   const [dataFile, setDataFile] = useState<File | null>(null);
@@ -23,7 +28,13 @@ export function ProjectUpload() {
     fileType: 'project' | 'data'
   ) => {
     const file = e.target.files?.[0];
-    if (!file) return;
+    if (!file) {
+        if (fileType === 'data') {
+            onDataFileChange(false);
+            setDataFile(null);
+        }
+        return;
+    };
 
     const allowedProjectTypes = ['application/zip', 'application/x-zip-compressed'];
     const allowedDataTypes = [
@@ -38,6 +49,10 @@ export function ProjectUpload() {
     } else if (fileType === 'data' && allowedDataTypes.includes(file.type)) {
       isValid = true;
       setDataFile(file);
+      onDataFileChange(true);
+    } else if (fileType === 'data') {
+        onDataFileChange(false);
+        setDataFile(null);
     }
 
     if (isValid) {
