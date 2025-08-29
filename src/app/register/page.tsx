@@ -1,8 +1,8 @@
-import { LoginForm } from '@/components/auth/login-form';
+import { RegisterForm } from '@/components/auth/register-form';
 import { Bot } from 'lucide-react';
 import Link from 'next/link';
 
-export default function LoginPage() {
+export default function RegisterPage() {
   return (
     <div className="flex h-screen w-full items-center justify-center bg-background px-4">
       <div className="w-full max-w-md">
@@ -11,26 +11,18 @@ export default function LoginPage() {
             <Bot className="h-12 w-12" />
           </div>
           <h1 className="font-headline text-4xl font-bold tracking-tighter text-primary">
-            Robot Maestro
+            Create an Account
           </h1>
           <p className="mt-1 text-muted-foreground">
-            Your AI-powered Robot Framework Orchestrator
+            Join Robot Maestro to start orchestrating your tests.
           </p>
         </div>
-        <LoginForm />
+        <RegisterForm />
         <p className="mt-4 text-center text-sm text-muted-foreground">
-          Don&apos;t have an account?{' '}
-          <Link href="/register" className="font-medium text-primary hover:underline">
-            Register
+          Already have an account?{' '}
+          <Link href="/" className="font-medium text-primary hover:underline">
+            Sign In
           </Link>
-        </p>
-        <p className="mt-8 text-center text-sm text-muted-foreground">
-          Last login: Today at{' '}
-          {new Date().toLocaleTimeString([], {
-            hour: '2-digit',
-            minute: '2-digit',
-          })}{' '}
-          from your location.
         </p>
       </div>
     </div>
