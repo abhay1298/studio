@@ -1,74 +1,69 @@
 import {NextRequest, NextResponse} from 'next/server';
 
-const mockSuccessLog = `
-==============================================================================
-Smoke Tests                                                                   
-==============================================================================
-User Login :: Test user login with valid credentials                        | PASS |
-------------------------------------------------------------------------------
-User Login :: Test user login with invalid credentials                      | PASS |
-------------------------------------------------------------------------------
-Dashboard :: Verify dashboard loads after login                             | PASS |
-------------------------------------------------------------------------------
-Smoke Tests                                                                 | PASS |
-3 tests, 3 passed, 0 failed
-==============================================================================
-Output:  /path/to/output.xml
-Log:     /path/to/log.html
-Report:  /path/to/report.html
-`;
+// This is the URL of your actual Robot Framework execution backend.
+// You would need to build this service separately. It could be a Flask,
+// Express, or any other type of server that can execute shell commands.
+const EXECUTION_BACKEND_URL = process.env.EXECUTION_BACKEND_URL || 'http://localhost:5001/run';
 
-const mockFailureLog = `
-==============================================================================
-Regression Tests                                                              
-==============================================================================
-Payment Gateway :: Test successful transaction                            | PASS |
-------------------------------------------------------------------------------
-Payment Gateway :: Test transaction with expired card                     | FAIL |
-Element with locator '//button[@id="submit-payment-flaky"]' not found after 5 seconds.
-------------------------------------------------------------------------------
-Inventory Management :: Add new item                                      | PASS |
-------------------------------------------------------------------------------
-Regression Tests                                                          | FAIL |
-3 tests, 2 passed, 1 failed
-==============================================================================
-Output:  /path/to/output.xml
-Log:     /path/to/log.html
-Report:  /path/to/report.html
-`;
 
-// This is a mock implementation.
-// In a real application, this endpoint would trigger a Robot Framework execution.
+/**
+ * This API route acts as a proxy between the Next.js frontend and the
+ * actual Robot Framework execution backend.
+ *
+ * It receives the request from the UI, forwards it to the execution backend,
+ * and then streams the results back to the UI.
+ */
 export async function POST(req: NextRequest) {
-  // In a real implementation, you would receive the uploaded files and parameters here.
-  // const formData = await req.formData();
-  // const projectFile = formData.get('project');
-  // const dataFile = formData.get('dataFile');
-  // const runConfig = JSON.parse(formData.get('config') as string);
-
   try {
-    // Simulate execution time
-    await new Promise(resolve => setTimeout(resolve, 5000));
+    const body = await req.json();
+    // In a real application, you would also handle file uploads (e.g., project.zip)
+    // and forward them to the backend. This example focuses on the parameters.
 
-    const isSuccess = Math.random() > 0.3;
+    console.log(`Forwarding execution request to: ${EXECUTION_BACKEND_URL}`);
+    console.log('Request body:', body);
 
-    if (isSuccess) {
-      return NextResponse.json({
-        status: 'success',
-        logs: mockSuccessLog,
-      });
-    } else {
-      return NextResponse.json({
-        status: 'failed',
-        logs: mockFailureLog,
-      });
+    // Make a request to your actual execution backend
+    const backendResponse = await fetch(EXECUTION_BACKEND_URL, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+            // Pass the configuration received from the frontend
+            runType: body.runType,
+            config: body.config,
+            // You would also include file data here
+        }),
+    });
+
+    // Check if the backend responded successfully
+    if (!backendResponse.ok) {
+        const errorText = await backendResponse.text();
+        console.error('Execution backend returned an error:', backendResponse.status, errorText);
+        return NextResponse.json(
+            {
+                status: 'error',
+                message: `Execution backend failed: ${errorText}`,
+            },
+            { status: backendResponse.status }
+        );
     }
+
+    // Get the JSON response from the backend (which should include status and logs)
+    const result = await backendResponse.json();
+
+    // Return the response from the backend directly to the frontend
+    return NextResponse.json(result);
+
   } catch (error) {
+    console.error('Error in /api/run-tests:', error);
+    // This will catch network errors if your execution backend is down
+    const errorMessage = error instanceof Error ? error.message : String(error);
     return NextResponse.json(
       {
         status: 'error',
-        message: 'Failed to execute tests.',
-        error: error instanceof Error ? error.message : String(error),
+        message: 'Failed to connect to the execution backend.',
+        details: errorMessage,
       },
       {status: 500}
     );
