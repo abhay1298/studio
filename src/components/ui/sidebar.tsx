@@ -316,33 +316,33 @@ SidebarRail.displayName = "SidebarRail"
 
 const SidebarInset = React.forwardRef<
   HTMLDivElement,
-  React.ComponentProps<"main">
+  React.ComponentProps<"div">
 >(({ className, ...props }, ref) => {
-    const { isMobile, state } = useSidebar();
+  const { isMobile, state } = useSidebar()
 
-    if (isMobile) {
-        return (
-            <main
-                ref={ref}
-                className={cn("flex-1 bg-background", className)}
-                {...props}
-            />
-        )
-    }
-
+  if (isMobile) {
     return (
-        <main
+      <div
         ref={ref}
-        className={cn(
-            "relative flex min-h-svh flex-1 flex-col bg-background transition-all",
-            state === 'expanded' ? 'md:ml-[--sidebar-width]' : 'md:ml-[--sidebar-width-icon]',
-            className
-        )}
+        className={cn("flex-1 bg-background", className)}
         {...props}
-        />
-    );
-});
+      />
+    )
+  }
 
+  return (
+    <div
+      ref={ref}
+      className={cn(
+        "relative flex min-h-svh flex-1 flex-col bg-background transition-all",
+        "group-data-[state=expanded]/sidebar-wrapper:md:ml-[--sidebar-width]",
+        "group-data-[state=collapsed]/sidebar-wrapper:md:ml-[--sidebar-width-icon]",
+        className
+      )}
+      {...props}
+    />
+  )
+})
 SidebarInset.displayName = "SidebarInset"
 
 const SidebarInput = React.forwardRef<
