@@ -104,8 +104,7 @@ export default function ReportsPage() {
     }
   };
   
-  const handleDownload = (report: Report, type: 'report' | 'log') => {
-      const file = type === 'report' ? report.reportFile : report.logFile;
+  const handleDownloadFile = (file: string | null) => {
       if (file) {
           window.open(`/api/get-report/${file}?download=true`);
       } else {
@@ -241,6 +240,10 @@ export default function ReportsPage() {
                             <Eye className="h-4 w-4" />
                             <span className="sr-only">View Report</span>
                         </Button>
+                         <Button variant="outline" size="icon" onClick={() => handleDownloadFile(report.reportFile)} disabled={!report.reportFile}>
+                            <Download className="h-4 w-4" />
+                            <span className="sr-only">Download Report</span>
+                        </Button>
                          <Button variant="outline" size="icon" onClick={() => handleViewFile(report.videoFile)} disabled={!report.videoFile}>
                             <Clapperboard className="h-4 w-4" />
                             <span className="sr-only">View Video</span>
@@ -288,5 +291,3 @@ export default function ReportsPage() {
     </div>
   );
 }
-
-    
