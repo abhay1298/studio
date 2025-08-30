@@ -1,14 +1,14 @@
 
 "use client";
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import * as XLSX from 'xlsx';
 import Papa from 'papaparse';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
-import { Download, UploadCloud, TriangleAlert, Plus, Trash2 } from 'lucide-react';
+import { Download, UploadCloud, TriangleAlert, Plus, Trash2, AlertCircle } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import {
   AlertDialog,
@@ -21,11 +21,20 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog"
+import { cn } from '@/lib/utils';
 
 
 type CellData = string | number;
 type RowData = CellData[];
 type TableData = RowData[];
+type ValidationError = {
+    rowIndex: number;
+    colIndex: number;
+    message: string;
+} | {
+    type: 'header';
+    message: string;
+};
 
 export function DataFileEditor() {
   const [data, setData] = useState<TableData>([]);
@@ -33,7 +42,38 @@ export function DataFileEditor() {
   const [fileName, setFileName] = useState('');
   const [fileType, setFileType] = useState<'csv' | 'xlsx' | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [validationErrors, setValidationErrors] = useState<ValidationError[]>([]);
   const { toast } = useToast();
+
+  const validateData = useCallback((currentHeaders: string[], currentData: TableData) => {
+    const newErrors: ValidationError[] = [];
+    const lowerCaseHeaders = currentHeaders.map(h => h.toLowerCase());
+    const idIndex = lowerCaseHeaders.indexOf('id');
+    const priorityIndex = lowerCaseHeaders.indexOf('priority');
+
+    if (idIndex === -1) {
+        newErrors.push({ type: 'header', message: "Missing required column: 'id'." });
+    }
+    if (priorityIndex === -1) {
+        newErrors.push({ type: 'header', message: "Missing required column: 'priority'." });
+    }
+
+    if (newErrors.length > 0) {
+        setValidationErrors(newErrors);
+        return; // Don't check row data if headers are missing
+    }
+
+    currentData.forEach((row, rowIndex) => {
+        if (!row[idIndex]) {
+            newErrors.push({ rowIndex, colIndex: idIndex, message: "ID is missing" });
+        }
+        if (!row[priorityIndex]) {
+            newErrors.push({ rowIndex, colIndex: priorityIndex, message: "Priority is missing" });
+        }
+    });
+
+    setValidationErrors(newErrors);
+  }, []);
 
   useEffect(() => {
     try {
@@ -51,6 +91,11 @@ export function DataFileEditor() {
         fetch(fileDataUrl)
           .then(res => res.blob())
           .then(blob => {
+              const processData = (parsedHeaders: string[], parsedData: TableData) => {
+                setHeaders(parsedHeaders);
+                setData(parsedData);
+                validateData(parsedHeaders, parsedData);
+              }
               if (isCsv) {
                   const reader = new FileReader();
                   reader.onload = (e) => {
@@ -59,9 +104,9 @@ export function DataFileEditor() {
                           header: true,
                           skipEmptyLines: true,
                           complete: (result) => {
-                              setHeaders(result.meta.fields || []);
-                              const arrayOfArrays = result.data.map((row: any) => Object.values(row));
-                              setData(arrayOfArrays as TableData);
+                              const parsedHeaders = result.meta.fields || [];
+                              const parsedData = result.data.map((row: any) => Object.values(row)) as TableData;
+                              processData(parsedHeaders, parsedData);
                           }
                       });
                   };
@@ -75,8 +120,9 @@ export function DataFileEditor() {
                       const ws = wb.Sheets[wsname];
                       const jsonData: any[][] = XLSX.utils.sheet_to_json(ws, { header: 1 });
                       if (jsonData.length > 0) {
-                          setHeaders(jsonData[0].map(String));
-                          setData(jsonData.slice(1));
+                          const parsedHeaders = jsonData[0].map(String);
+                          const parsedData = jsonData.slice(1);
+                          processData(parsedHeaders, parsedData);
                       }
                   };
                   reader.readAsArrayBuffer(blob);
@@ -90,13 +136,14 @@ export function DataFileEditor() {
         setError('Failed to parse the file from session storage. Please try uploading it again.');
         console.error(e);
     }
-  }, []);
+  }, [validateData]);
 
   const handleCellChange = (rowIndex: number, colIndex: number, value: string) => {
     const newData = [...data];
     if (!newData[rowIndex]) newData[rowIndex] = [];
     newData[rowIndex][colIndex] = value;
     setData(newData);
+    validateData(headers, newData);
   };
   
   const handleDownload = () => {
@@ -133,24 +180,34 @@ export function DataFileEditor() {
   };
 
   const addRow = () => {
-    setData([...data, Array(headers.length).fill('')]);
+    const newData = [...data, Array(headers.length).fill('')];
+    setData(newData);
+    validateData(headers, newData);
   };
 
   const removeRow = (rowIndex: number) => {
-    setData(data.filter((_, index) => index !== rowIndex));
+    const newData = data.filter((_, index) => index !== rowIndex)
+    setData(newData);
+    validateData(headers, newData);
   };
   
   const addColumn = () => {
     const newColumnName = prompt("Enter new column header:", `Column ${headers.length + 1}`);
     if (newColumnName) {
-        setHeaders([...headers, newColumnName]);
-        setData(data.map(row => [...row, '']));
+        const newHeaders = [...headers, newColumnName];
+        setHeaders(newHeaders);
+        const newData = data.map(row => [...row, '']);
+        setData(newData);
+        validateData(newHeaders, newData);
     }
   };
 
   const removeColumn = (colIndex: number) => {
-    setHeaders(headers.filter((_, index) => index !== colIndex));
-    setData(data.map(row => row.filter((_, index) => index !== colIndex)));
+    const newHeaders = headers.filter((_, index) => index !== colIndex);
+    setHeaders(newHeaders);
+    const newData = data.map(row => row.filter((_, index) => index !== colIndex));
+    setData(newData);
+    validateData(newHeaders, newData);
   };
 
   if (error) {
@@ -177,6 +234,21 @@ export function DataFileEditor() {
 
   return (
     <div className="space-y-4">
+        {validationErrors.length > 0 && (
+            <Alert variant="destructive">
+                <AlertCircle className="h-4 w-4" />
+                <AlertTitle>Validation Issues Detected</AlertTitle>
+                <AlertDescription>
+                    <ul className="list-disc pl-5">
+                        {validationErrors.map((err, i) => (
+                            <li key={i}>
+                                {'type' in err ? err.message : `Row ${err.rowIndex + 1}: ${err.message} in the '${headers[err.colIndex]}' column.`}
+                            </li>
+                        ))}
+                    </ul>
+                </AlertDescription>
+            </Alert>
+        )}
         <div className="flex flex-wrap gap-2">
              <Button onClick={addRow} variant="outline">
                 <Plus className="mr-2 h-4 w-4" />
@@ -229,16 +301,22 @@ export function DataFileEditor() {
                 <TableBody>
                 {data.map((row, rowIndex) => (
                     <TableRow key={rowIndex}>
-                    {headers.map((_, colIndex) => (
-                        <TableCell key={colIndex}>
-                        <Input
-                            type="text"
-                            value={row[colIndex] || ''}
-                            onChange={(e) => handleCellChange(rowIndex, colIndex, e.target.value)}
-                            className="w-full min-w-[150px]"
-                        />
-                        </TableCell>
-                    ))}
+                    {headers.map((_, colIndex) => {
+                        const isInvalid = validationErrors.some(err => 'rowIndex' in err && err.rowIndex === rowIndex && err.colIndex === colIndex);
+                        return (
+                            <TableCell key={colIndex}>
+                                <Input
+                                    type="text"
+                                    value={row[colIndex] || ''}
+                                    onChange={(e) => handleCellChange(rowIndex, colIndex, e.target.value)}
+                                    className={cn(
+                                        "w-full min-w-[150px]",
+                                        isInvalid && "border-destructive ring-2 ring-destructive/50 focus-visible:ring-destructive"
+                                    )}
+                                />
+                            </TableCell>
+                        )
+                    })}
                      <TableCell className="text-right">
                         <AlertDialog>
                            <AlertDialogTrigger asChild>

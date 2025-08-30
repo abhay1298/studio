@@ -4,6 +4,8 @@
 import { createContext, useContext, useState, useCallback, ReactNode } from 'react';
 import { useToast } from "@/hooks/use-toast";
 import { CheckCircle2, XCircle } from 'lucide-react';
+import Papa from 'papaparse';
+import * as XLSX from 'xlsx';
 
 
 type ExecutionStatus = "idle" | "running" | "success" | "failed" | "stopped";
@@ -26,6 +28,59 @@ interface ExecutionContextType {
 }
 
 const ExecutionContext = createContext<ExecutionContextType | undefined>(undefined);
+
+const validateOrchestratorData = async (): Promise<string | null> => {
+    const fileDataUrl = sessionStorage.getItem('uploadedDataFile');
+    const fileName = sessionStorage.getItem('uploadedDataFileName');
+    if (!fileDataUrl || !fileName) {
+        return 'No data file has been uploaded.';
+    }
+
+    try {
+        const res = await fetch(fileDataUrl);
+        const blob = await res.blob();
+        let headers: string[] = [];
+        let data: any[] = [];
+
+        if (fileName.endsWith('.csv')) {
+            const text = await blob.text();
+            const result = Papa.parse(text, { header: true, skipEmptyLines: true });
+            headers = result.meta.fields || [];
+            data = result.data;
+        } else if (fileName.endsWith('.xlsx')) {
+            const arrayBuffer = await blob.arrayBuffer();
+            const wb = XLSX.read(arrayBuffer, { type: 'array' });
+            const wsname = wb.SheetNames[0];
+            const ws = wb.Sheets[wsname];
+            data = XLSX.utils.sheet_to_json(ws);
+            if (data.length > 0) {
+                headers = Object.keys(data[0]);
+            }
+        }
+        
+        const lowerCaseHeaders = headers.map(h => h.toLowerCase());
+        if (!lowerCaseHeaders.includes('id') || !lowerCaseHeaders.includes('priority')) {
+            return "Data file must contain 'id' and 'priority' columns.";
+        }
+
+        for (let i = 0; i < data.length; i++) {
+            const row = data[i];
+            const lowerCaseRowKeys = Object.keys(row).reduce((acc, key) => {
+                acc[key.toLowerCase()] = row[key];
+                return acc;
+            }, {} as any);
+
+            if (!lowerCaseRowKeys.id || !lowerCaseRowKeys.priority) {
+                return `Row ${i + 2} in your data file has missing 'id' or 'priority'. Please fix it in the Data Editor.`;
+            }
+        }
+
+        return null; // No errors
+    } catch (e) {
+        console.error("Validation error:", e);
+        return "Could not read or validate the data file. Please try uploading it again.";
+    }
+};
 
 export function ExecutionProvider({ children }: { children: ReactNode }) {
   const [status, setStatus] = useState<ExecutionStatus>("idle");
@@ -100,6 +155,18 @@ export function ExecutionProvider({ children }: { children: ReactNode }) {
 
 
   const handleRun = useCallback(async (runType: string) => {
+    if (runType === 'Orchestrator') {
+        const validationError = await validateOrchestratorData();
+        if (validationError) {
+            toast({
+                variant: 'destructive',
+                title: 'Orchestrator Validation Failed',
+                description: validationError,
+            });
+            return;
+        }
+    }
+    
     setLogs([]);
     addLog(`Starting ${runType} execution...`);
     setStatus("running");
@@ -243,5 +310,3 @@ export function useExecutionContext() {
   }
   return context;
 }
-
-    
