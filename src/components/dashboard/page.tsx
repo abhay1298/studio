@@ -21,7 +21,7 @@ import { Badge } from '@/components/ui/badge';
 import { ProjectUpload } from '@/components/dashboard/project-upload';
 import { DependencyChecker } from '@/components/dashboard/dependency-checker';
 import { Button } from '@/components/ui/button';
-import { ArrowUpRight, Ban, Loader2 } from 'lucide-react';
+import { ArrowUpRight, Ban } from 'lucide-react';
 import Link from 'next/link';
 import { Skeleton } from '../ui/skeleton';
 
@@ -32,7 +32,7 @@ type RecentRun = {
   date: string;
 };
 
-export default function DashboardPage() {
+export default function DashboardPageContent() {
   const [projectFile, setProjectFile] = useState<File | null>(null);
   const [recentRuns, setRecentRuns] = useState<RecentRun[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -43,10 +43,14 @@ export default function DashboardPage() {
   });
 
   useEffect(() => {
-    const loadRunHistory = () => {
+    const loadRunHistory = async () => {
       setIsLoading(true);
+      // Ensure this runs only on the client
       if (typeof window !== 'undefined') {
         try {
+          // Simulate a small delay to show loading state
+          await new Promise(resolve => setTimeout(resolve, 200));
+
           const history = localStorage.getItem('robotMaestroRuns');
           if (history) {
             const runs = JSON.parse(history);
@@ -58,7 +62,8 @@ export default function DashboardPage() {
             const passRate = totalRuns > 0 ? ((passedRuns / totalRuns) * 100).toFixed(1) + '%' : '0.0%';
 
             const totalDuration = runs.reduce((acc: number, r: any) => {
-                return acc + parseFloat(r.duration);
+                const durationValue = r.duration ? parseFloat(r.duration) : 0;
+                return acc + (isNaN(durationValue) ? 0 : durationValue);
             }, 0);
             const avgDuration = totalRuns > 0 ? (totalDuration / totalRuns).toFixed(2) + 's' : '--';
 
@@ -66,10 +71,9 @@ export default function DashboardPage() {
           }
         } catch (e) {
           console.error("Failed to parse run history from localStorage", e);
-        } finally {
-          setIsLoading(false);
         }
       }
+      setIsLoading(false);
     };
 
     loadRunHistory();
@@ -87,7 +91,7 @@ export default function DashboardPage() {
           <Card>
             <CardHeader className="pb-2">
               <CardDescription>Total Runs</CardDescription>
-              <CardTitle className="font-headline text-4xl">{stats.totalRuns}</CardTitle>
+              <CardTitle className="font-headline text-4xl">{isLoading ? <Skeleton className="w-20 h-9"/> : stats.totalRuns}</CardTitle>
             </CardHeader>
             <CardContent>
               <div className="text-xs text-muted-foreground">
@@ -98,7 +102,7 @@ export default function DashboardPage() {
           <Card>
             <CardHeader className="pb-2">
               <CardDescription>Pass Rate</CardDescription>
-              <CardTitle className="font-headline text-4xl">{stats.passRate}</CardTitle>
+              <CardTitle className="font-headline text-4xl">{isLoading ? <Skeleton className="w-24 h-9"/> : stats.passRate}</CardTitle>
             </CardHeader>
             <CardContent>
               <div className="text-xs text-muted-foreground">
@@ -109,7 +113,7 @@ export default function DashboardPage() {
           <Card>
             <CardHeader className="pb-2">
               <CardDescription>Avg. Duration</CardDescription>
-              <CardTitle className="font-headline text-4xl">{stats.avgDuration}</CardTitle>
+              <CardTitle className="font-headline text-4xl">{isLoading ? <Skeleton className="w-20 h-9"/> : stats.avgDuration}</CardTitle>
             </CardHeader>
             <CardContent>
               <div className="text-xs text-muted-foreground">
@@ -161,7 +165,7 @@ export default function DashboardPage() {
                   Array.from({length: 3}).map((_, index) => (
                     <TableRow key={index}>
                       <TableCell><Skeleton className="h-5 w-3/4" /></TableCell>
-                      <TableCell><Skeleton className="h-5 w-20" /></TableCell>
+                      <TableCell><Skeleton className="h-6 w-20 rounded-full" /></TableCell>
                       <TableCell><Skeleton className="h-5 w-16" /></TableCell>
                       <TableCell><Skeleton className="h-5 w-24" /></TableCell>
                     </TableRow>
@@ -178,7 +182,7 @@ export default function DashboardPage() {
                             run.status === 'Success'
                                 ? 'border-transparent bg-green-500/20 text-green-700 dark:bg-green-500/10 dark:text-green-400'
                                 : run.status === 'Failed'
-                                ? 'border-transparent bg-destructive/20 text-destructive'
+                                ? 'border-transparent bg-destructive text-destructive-foreground'
                                 : 'border-transparent bg-secondary text-secondary-foreground'
                             }
                         >

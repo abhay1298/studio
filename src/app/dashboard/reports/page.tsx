@@ -22,6 +22,7 @@ import { Button } from '@/components/ui/button';
 import { Download, Eye, Ban } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import Link from 'next/link';
+import { Skeleton } from '@/components/ui/skeleton';
 
 type Report = {
   id: string;
@@ -37,26 +38,38 @@ type Report = {
 export default function ReportsPage() {
   const { toast } = useToast();
   const [reports, setReports] = useState<Report[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    const loadReports = () => {
-        if (typeof window !== 'undefined') {
-            const history = localStorage.getItem('robotMaestroRuns');
-            if (history) {
-              const runs = JSON.parse(history);
-              // The history is just the basic run info, we'll format it for the report view
-              const formattedReports = runs.map((run: any, index: number) => ({
-                id: `RUN-${new Date(run.date).getTime()}-${index}`, // Create a more unique ID
-                suite: run.suite,
-                status: run.status,
-                timestamp: new Date(run.date).toLocaleString(),
-                duration: run.duration,
-                pass: run.pass,
-                fail: run.fail,
-              })).reverse(); // Show newest first
-              setReports(formattedReports);
-            }
+    const loadReports = async () => {
+      setIsLoading(true);
+      // Ensure this runs only on the client
+      if (typeof window !== 'undefined') {
+        try {
+          const history = localStorage.getItem('robotMaestroRuns');
+          if (history) {
+            const runs = JSON.parse(history);
+            const formattedReports = runs.map((run: any, index: number) => ({
+              id: `RUN-${new Date(run.date).getTime()}-${index}`,
+              suite: run.suite,
+              status: run.status,
+              timestamp: new Date(run.date).toLocaleString(),
+              duration: run.duration,
+              pass: run.pass,
+              fail: run.fail,
+            })).reverse(); // Show newest first
+            setReports(formattedReports);
+          }
+        } catch (e) {
+          console.error("Failed to parse run history from localStorage", e);
+          toast({
+            variant: 'destructive',
+            title: 'Could not load reports',
+            description: 'There was an issue reading your execution history.'
+          });
         }
+      }
+      setIsLoading(false);
     };
     
     loadReports();
@@ -67,7 +80,7 @@ export default function ReportsPage() {
         window.removeEventListener('runsUpdated', loadReports);
     };
 
-  }, []);
+  }, [toast]);
 
   const handleViewReport = (reportId: string) => {
     toast({
@@ -111,7 +124,20 @@ export default function ReportsPage() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {reports.length > 0 ? (
+              {isLoading ? (
+                Array.from({length: 5}).map((_, i) => (
+                  <TableRow key={i}>
+                    <TableCell><Skeleton className="h-5 w-32" /></TableCell>
+                    <TableCell><Skeleton className="h-5 w-48" /></TableCell>
+                    <TableCell><Skeleton className="h-6 w-20" /></TableCell>
+                    <TableCell><Skeleton className="h-5 w-40" /></TableCell>
+                    <TableCell><Skeleton className="h-5 w-16" /></TableCell>
+                    <TableCell className="text-center"><Skeleton className="h-5 w-8 mx-auto" /></TableCell>
+                    <TableCell className="text-center"><Skeleton className="h-5 w-8 mx-auto" /></TableCell>
+                    <TableCell className="text-right"><Skeleton className="h-8 w-20 ml-auto" /></TableCell>
+                  </TableRow>
+                ))
+              ) : reports.length > 0 ? (
                 reports.map((report) => (
                     <TableRow key={report.id}>
                     <TableCell className="font-mono text-xs">
@@ -120,16 +146,14 @@ export default function ReportsPage() {
                     <TableCell className="font-medium">{report.suite}</TableCell>
                     <TableCell>
                         <Badge
-                        variant={
-                            report.status === 'Success' ? 'default' : 'destructive'
-                        }
-                        className={
-                            report.status === 'Success'
-                            ? 'bg-green-500/20 text-green-700 dark:bg-green-500/10 dark:text-green-400 border-green-500/20'
-                            : ''
-                        }
+                          variant={report.status === 'Success' ? 'default' : 'destructive'}
+                          className={
+                              report.status === 'Success'
+                              ? 'border-transparent bg-green-500/20 text-green-700 dark:bg-green-500/10 dark:text-green-400'
+                              : ''
+                          }
                         >
-                        {report.status}
+                          {report.status}
                         </Badge>
                     </TableCell>
                     <TableCell>{report.timestamp}</TableCell>
