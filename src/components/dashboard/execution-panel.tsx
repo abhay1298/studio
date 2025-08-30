@@ -27,20 +27,21 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import { Alert, AlertDescription, AlertTitle } from "../ui/alert";
 import { AiAnalysisDialog } from "./ai-analysis-dialog";
-
-type ExecutionStatus = "idle" | "running" | "success" | "failed" | "stopped";
+import { useExecutionContext } from "@/contexts/execution-context";
 
 export function ExecutionPanel() {
-  const [status, setStatus] = useState<ExecutionStatus>("idle");
-  const [logs, setLogs] = useState<string[]>([]);
+  const { 
+      status, 
+      logs, 
+      lastFailedLogs,
+      runConfig,
+      handleInputChange,
+      handleRun,
+      handleStop,
+      clearLogs
+  } = useExecutionContext();
+
   const { toast } = useToast();
-  const [runConfig, setRunConfig] = useState({
-    includeTags: '',
-    excludeTags: '',
-    suite: '',
-    testcase: '',
-  });
-  const [lastFailedLogs, setLastFailedLogs] = useState('');
   const [isDataFileUploaded, setIsDataFileUploaded] = useState(false);
 
   useEffect(() => {
@@ -61,55 +62,7 @@ export function ExecutionPanel() {
     };
   }, []);
 
-  const addLog = (message: string) => {
-    const timestamp = new Date().toLocaleTimeString();
-    setLogs(prev => [...prev, `[${timestamp}] ${message}`]);
-  };
-
-  const handleInputChange = (field: keyof typeof runConfig, value: string) => {
-    setRunConfig(prev => ({...prev, [field]: value}));
-  };
-
-  const saveRunToHistory = (
-    suiteName: string, 
-    status: 'Success' | 'Failed' | 'Stopped', 
-    duration: string, 
-    passCount: number, 
-    failCount: number
-  ) => {
-      if (typeof window !== 'undefined') {
-          const newRun = {
-              suite: suiteName,
-              status,
-              duration,
-              date: new Date().toISOString(),
-              pass: passCount,
-              fail: failCount,
-          };
-          const history = localStorage.getItem('robotMaestroRuns');
-          const runs = history ? JSON.parse(history) : [];
-          runs.push(newRun);
-          localStorage.setItem('robotMaestroRuns', JSON.stringify(runs));
-          window.dispatchEvent(new CustomEvent('runsUpdated'));
-      }
-  };
-
-  const getSuiteNameForRun = (runType: string) => {
-    switch (runType) {
-        case 'By Tag':
-            return `Tags: ${runConfig.includeTags || 'all'}`;
-        case 'By Suite':
-            return `Suite: ${runConfig.suite || 'all'}`;
-        case 'By Test Case':
-            return `Test: ${runConfig.testcase || 'all'}`;
-        case 'Orchestrator':
-            return 'Orchestrator Run';
-        default:
-            return 'Unnamed Run';
-    }
-  }
-
-  const handleRun = async (runType: string) => {
+  const handleRunClick = (runType: string) => {
     if (runType === "Orchestrator" && !isDataFileUploaded) {
       toast({
         variant: "destructive",
@@ -119,122 +72,7 @@ export function ExecutionPanel() {
       });
       return;
     }
-    
-    setLogs([]);
-    addLog(`Starting ${runType} execution...`);
-    setStatus("running");
-    setLastFailedLogs('');
-    const startTime = Date.now();
-
-    try {
-      const response = await fetch('/api/run-tests', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ runType, config: runConfig }),
-      });
-
-      const endTime = Date.now();
-      const duration = ((endTime - startTime) / 1000).toFixed(2) + 's';
-      const suiteName = getSuiteNameForRun(runType);
-
-      if (!response.ok) {
-        // If the request was aborted, the status will not be "running" anymore.
-        if (status === "running") {
-            const result = await response.json();
-            const errorMessage = result.message || 'The execution server returned an error.';
-            addLog(`Execution failed: ${errorMessage}`);
-            setStatus("failed");
-            saveRunToHistory(suiteName, 'Failed', duration, 0, 1);
-            toast({
-                variant: "destructive",
-                title: "Execution Error",
-                description: errorMessage,
-            });
-        }
-        return;
-      }
-      
-      const result = await response.json();
-      addLog("Execution logs received from backend:");
-      setLogs(prev => [...prev, result.logs]);
-      setStatus(result.status === 'success' ? 'success' : 'failed');
-      saveRunToHistory(
-        suiteName, 
-        result.status === 'success' ? 'Success' : 'Failed', 
-        duration,
-        result.pass_count || 0,
-        result.fail_count || 0
-      );
-
-      if (result.status === 'success') {
-        toast({
-          title: "Job Completed Successfully",
-          description: `Run finished in ${duration}.`,
-          action: <CheckCircle2 className="text-green-500" />,
-        });
-      } else if (result.status === 'failed') {
-        setLastFailedLogs(result.logs);
-        toast({
-          variant: "destructive",
-          title: "Execution Failed",
-          description: "Check logs for details.",
-          action: <XCircle />,
-        });
-      }
-
-    } catch (error) {
-      if (status !== 'running') {
-        // This means the process was stopped, so we don't show an error.
-        return;
-      }
-      const endTime = Date.now();
-      const duration = ((endTime - startTime) / 1000).toFixed(2) + 's';
-      const suiteName = getSuiteNameForRun(runType);
-      
-      let toastTitle = "Execution Error";
-      let toastDescription = "An unexpected error occurred. Please try again.";
-
-      if (error instanceof TypeError && error.message === 'fetch failed') {
-        toastTitle = "Connection Error";
-        toastDescription = "Could not connect to the execution service. Please ensure the Python backend is running. See the 'Help & Docs' page for instructions.";
-      }
-      
-      addLog(`Execution failed: ${toastDescription}`);
-      setStatus("failed");
-      saveRunToHistory(suiteName, 'Failed', duration, 0, 1);
-      toast({
-        variant: "destructive",
-        title: toastTitle,
-        description: toastDescription,
-      });
-    }
-  };
-
-  const handleStop = async () => {
-    addLog('Attempting to stop execution...');
-    try {
-        const response = await fetch('/api/stop-tests', { method: 'POST' });
-        if (!response.ok) {
-            throw new Error('Server responded with an error.');
-        }
-        const result = await response.json();
-        addLog(result.message);
-        setStatus('stopped');
-        toast({
-            title: "Execution Stopped",
-            description: "The test run has been terminated.",
-        });
-
-    } catch (e) {
-        addLog('Failed to stop execution. It may have already completed.');
-        toast({
-            variant: "destructive",
-            title: "Stop Failed",
-            description: "Could not stop the test run. Check the backend server.",
-        });
-    }
+    handleRun(runType);
   };
   
   const handleDownloadLogs = () => {
@@ -270,7 +108,7 @@ export function ExecutionPanel() {
               <Input id="include-tags" placeholder="e.g., smoke AND critical" value={runConfig.includeTags} onChange={(e) => handleInputChange('includeTags', e.target.value)} disabled={isRunning} />
               <Label htmlFor="exclude-tags">Exclude Tags</Label>
               <Input id="exclude-tags" placeholder="e.g., wip" value={runConfig.excludeTags} onChange={(e) => handleInputChange('excludeTags', e.target.value)} disabled={isRunning}/>
-              <Button onClick={() => handleRun("By Tag")} disabled={isRunning}>
+              <Button onClick={() => handleRunClick("By Tag")} disabled={isRunning}>
                 {isRunning && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                 Run by Tag
               </Button>
@@ -281,7 +119,7 @@ export function ExecutionPanel() {
             <div className="space-y-4">
               <Label htmlFor="suite-name">Suite Name</Label>
               <Input id="suite-name" placeholder="e.g., tests/smoke_tests.robot" value={runConfig.suite} onChange={(e) => handleInputChange('suite', e.target.value)} disabled={isRunning}/>
-              <Button onClick={() => handleRun("By Suite")} disabled={isRunning}>
+              <Button onClick={() => handleRunClick("By Suite")} disabled={isRunning}>
                  {isRunning && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                 Run by Suite
               </Button>
@@ -292,7 +130,7 @@ export function ExecutionPanel() {
             <div className="space-y-4">
               <Label htmlFor="testcase-name">Test Case Name</Label>
               <Input id="testcase-name" placeholder="e.g., 'User should be able to login'" value={runConfig.testcase} onChange={(e) => handleInputChange('testcase', e.target.value)} disabled={isRunning}/>
-              <Button onClick={() => handleRun("By Test Case")} disabled={isRunning}>
+              <Button onClick={() => handleRunClick("By Test Case")} disabled={isRunning}>
                 {isRunning && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                 Run Test
               </Button>
@@ -308,7 +146,7 @@ export function ExecutionPanel() {
                   This mode will execute tests based on the uploaded Excel/CSV file. Ensure the file is uploaded and validated.
                 </AlertDescription>
               </Alert>
-              <Button onClick={() => handleRun("Orchestrator")} disabled={isRunning || !isDataFileUploaded}>
+              <Button onClick={() => handleRunClick("Orchestrator")} disabled={isRunning || !isDataFileUploaded}>
                 {isRunning && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                 Run via Orchestrator
               </Button>
@@ -317,7 +155,7 @@ export function ExecutionPanel() {
         </CardContent>
       </Tabs>
       
-      {(status !== "idle") && (
+      {(status !== "idle" || logs.length > 0) && (
         <>
           <CardHeader>
             <CardTitle className="font-headline">Execution Logs</CardTitle>
@@ -348,7 +186,7 @@ export function ExecutionPanel() {
                     </Button>
                 )}
                 
-                <Button variant="outline" onClick={() => setLogs([])} disabled={isRunning || logs.length === 0}>
+                <Button variant="outline" onClick={clearLogs} disabled={isRunning || logs.length === 0}>
                     <Trash2 className="mr-2 h-4 w-4" />
                     Clear Logs
                 </Button>
