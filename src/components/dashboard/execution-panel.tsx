@@ -130,12 +130,13 @@ export function ExecutionPanel() {
         body: JSON.stringify({ runType, config: runConfig }),
       });
 
-      if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(errorText || 'Server error');
-      }
-
       const result = await response.json();
+
+      if (!response.ok) {
+        // Use the message from the backend response if available
+        throw new Error(result.message || 'The execution server returned an error.');
+      }
+      
       const endTime = Date.now();
       const duration = ((endTime - startTime) / 1000).toFixed(2) + 's';
       const suiteName = getSuiteNameForRun(runType);
@@ -162,18 +163,27 @@ export function ExecutionPanel() {
       }
 
     } catch (error) {
-      console.error("Execution failed:", error);
       const endTime = Date.now();
       const duration = ((endTime - startTime) / 1000).toFixed(2) + 's';
       const suiteName = getSuiteNameForRun(runType);
       const errorMessage = error instanceof Error ? error.message : "An unknown error occurred.";
+      
+      let toastTitle = "Execution Error";
+      let toastDescription = "An unexpected error occurred. Please try again.";
+
+      // Check for a generic network failure
+      if (errorMessage.includes('Failed to fetch')) {
+        toastTitle = "Connection Error";
+        toastDescription = "Could not connect to the execution service. Please ensure the Python backend is running. See the 'Help & Docs' page for instructions.";
+      }
+      
       setLogs(currentLogs => currentLogs + `\n[${new Date().toLocaleTimeString()}] Execution failed: ${errorMessage}`);
       setStatus("failed");
       saveRunToHistory(suiteName, 'Failed', duration);
       toast({
         variant: "destructive",
-        title: "Execution Error",
-        description: "Could not connect to the execution service.",
+        title: toastTitle,
+        description: toastDescription,
       });
     }
   };
