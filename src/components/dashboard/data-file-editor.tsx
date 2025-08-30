@@ -23,6 +23,7 @@ import {
 } from "@/components/ui/alert-dialog"
 import { cn } from '@/lib/utils';
 import Link from 'next/link';
+import { useExecutionContext } from '@/contexts/execution-context';
 
 
 type CellData = string | number;
@@ -37,44 +38,8 @@ type ValidationError = {
     message: string;
 };
 
-const SESSION_HEADERS_KEY = 'editedDataHeaders';
-const SESSION_DATA_KEY = 'editedDataRows';
-
-// Helper to save current state to session storage
-const saveDataToSession = (headers: string[], data: TableData) => {
-    try {
-        sessionStorage.setItem(SESSION_HEADERS_KEY, JSON.stringify(headers));
-        sessionStorage.setItem(SESSION_DATA_KEY, JSON.stringify(data));
-    } catch (e) {
-        console.error("Failed to save data to session storage", e);
-    }
-};
-
-// Helper to load state from session storage
-const loadDataFromSession = (): { headers: string[], data: TableData } | null => {
-    try {
-        const storedHeaders = sessionStorage.getItem(SESSION_HEADERS_KEY);
-        const storedData = sessionStorage.getItem(SESSION_DATA_KEY);
-        if (storedHeaders && storedData) {
-            return {
-                headers: JSON.parse(storedHeaders),
-                data: JSON.parse(storedData),
-            };
-        }
-        return null;
-    } catch (e) {
-        console.error("Failed to load data from session storage", e);
-        return null;
-    }
-};
-
-
 export function DataFileEditor() {
-  const [data, setData] = useState<TableData>([]);
-  const [headers, setHeaders] = useState<string[]>([]);
-  const [fileName, setFileName] = useState('');
-  const [fileType, setFileType] = useState<'csv' | 'xlsx' | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const { dataFile, editedData, setEditedData, editedHeaders, setEditedHeaders } = useExecutionContext();
   const [validationErrors, setValidationErrors] = useState<ValidationError[]>([]);
   const { toast } = useToast();
 
@@ -108,98 +73,21 @@ export function DataFileEditor() {
     setValidationErrors(newErrors);
   }, []);
 
-  const updateStateAndSession = (newHeaders: string[], newData: TableData) => {
-    setHeaders(newHeaders);
-    setData(newData);
+  const updateStateAndValidate = (newHeaders: string[], newData: TableData) => {
+    setEditedHeaders(newHeaders);
+    setEditedData(newData);
     validateData(newHeaders, newData);
-    saveDataToSession(newHeaders, newData);
   }
 
-  useEffect(() => {
-    try {
-      // First, try to load from our edited session data
-      const sessionData = loadDataFromSession();
-      if (sessionData) {
-          setFileName(sessionStorage.getItem('uploadedDataFileName') || '');
-          const fileExtension = sessionStorage.getItem('uploadedDataFileName')?.split('.').pop();
-          if (fileExtension === 'csv') setFileType('csv');
-          if (fileExtension === 'xlsx') setFileType('xlsx');
-          
-          setHeaders(sessionData.headers);
-          setData(sessionData.data);
-          validateData(sessionData.headers, sessionData.data);
-          return;
-      }
-      
-      // If not, fall back to loading the original file
-      const fileDataUrl = sessionStorage.getItem('uploadedDataFile');
-      const storedFileName = sessionStorage.getItem('uploadedDataFileName');
-  
-      if (fileDataUrl && storedFileName) {
-        setFileName(storedFileName);
-        const isCsv = storedFileName.endsWith('.csv');
-        const isXlsx = storedFileName.endsWith('.xlsx');
-        
-        if (isCsv) setFileType('csv');
-        if (isXlsx) setFileType('xlsx');
-        
-        fetch(fileDataUrl)
-          .then(res => res.blob())
-          .then(blob => {
-              const processData = (parsedHeaders: string[], parsedData: TableData) => {
-                updateStateAndSession(parsedHeaders, parsedData);
-              }
-              if (isCsv) {
-                  const reader = new FileReader();
-                  reader.onload = (e) => {
-                      const text = e.target?.result;
-                      Papa.parse(text as string, {
-                          header: true,
-                          skipEmptyLines: true,
-                          complete: (result) => {
-                              const parsedHeaders = result.meta.fields || [];
-                              const parsedData = result.data.map((row: any) => Object.values(row)) as TableData;
-                              processData(parsedHeaders, parsedData);
-                          }
-                      });
-                  };
-                  reader.readAsText(blob);
-              } else if (isXlsx) {
-                  const reader = new FileReader();
-                  reader.onload = (e) => {
-                      const arrayBuffer = e.target?.result;
-                      const wb = XLSX.read(arrayBuffer, { type: 'array' });
-                      const wsname = wb.SheetNames[0];
-                      const ws = wb.Sheets[wsname];
-                      const jsonData: any[][] = XLSX.utils.sheet_to_json(ws, { header: 1 });
-                      if (jsonData.length > 0) {
-                          const parsedHeaders = jsonData[0].map(String);
-                          const parsedData = jsonData.slice(1);
-                          processData(parsedHeaders, parsedData);
-                      }
-                  };
-                  reader.readAsArrayBuffer(blob);
-              }
-          }).catch(e => {
-            setError('Failed to load the file blob. Please try uploading it again.');
-            console.error(e);
-          });
-      }
-    } catch (e) {
-        setError('Failed to parse the file from session storage. Please try uploading it again.');
-        console.error(e);
-    }
-  }, [validateData]);
-
   const handleCellChange = (rowIndex: number, colIndex: number, value: string) => {
-    const newData = [...data];
+    const newData = [...editedData];
     if (!newData[rowIndex]) newData[rowIndex] = [];
     newData[rowIndex][colIndex] = value;
-    updateStateAndSession(headers, newData);
+    updateStateAndValidate(editedHeaders, newData);
   };
   
   const handleDownload = () => {
-    if (!fileName) {
+    if (!dataFile) {
         toast({
             variant: "destructive",
             title: 'No File to Download',
@@ -207,68 +95,68 @@ export function DataFileEditor() {
         });
         return;
     }
-    const worksheetData = [headers, ...data];
+    const worksheetData = [editedHeaders, ...editedData];
     
-    if (fileType === 'csv') {
+    if (dataFile.name.endsWith('.csv')) {
       const csv = Papa.unparse(worksheetData);
       const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
       const link = document.createElement('a');
       link.href = URL.createObjectURL(blob);
-      link.setAttribute('download', `edited-${fileName}`);
+      link.setAttribute('download', `edited-${dataFile.name}`);
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
-    } else if (fileType === 'xlsx') {
+    } else if (dataFile.name.endsWith('.xlsx')) {
       const ws = XLSX.utils.aoa_to_sheet(worksheetData);
       const wb = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(wb, ws, 'Sheet1');
-      XLSX.writeFile(wb, `edited-${fileName}`);
+      XLSX.writeFile(wb, `edited-${dataFile.name}`);
     }
 
      toast({
         title: 'File Ready for Download',
-        description: `Your edited file ${fileName} has been saved.`,
+        description: `Your edited file ${dataFile.name} has been saved.`,
       });
   };
 
   const addRow = () => {
-    const newData = [...data, Array(headers.length).fill('')];
-    updateStateAndSession(headers, newData);
+    const newData = [...editedData, Array(editedHeaders.length).fill('')];
+    updateStateAndValidate(editedHeaders, newData);
   };
 
   const removeRow = (rowIndex: number) => {
-    const newData = data.filter((_, index) => index !== rowIndex)
-    updateStateAndSession(headers, newData);
+    const newData = editedData.filter((_, index) => index !== rowIndex)
+    updateStateAndValidate(editedHeaders, newData);
   };
   
   const addColumn = () => {
-    const newColumnName = prompt("Enter new column header:", `Column ${headers.length + 1}`);
+    const newColumnName = prompt("Enter new column header:", `Column ${editedHeaders.length + 1}`);
     if (newColumnName) {
-        const newHeaders = [...headers, newColumnName];
-        const newData = data.map(row => [...row, '']);
-        updateStateAndSession(newHeaders, newData);
+        const newHeaders = [...editedHeaders, newColumnName];
+        const newData = editedData.map(row => [...row, '']);
+        updateStateAndValidate(newHeaders, newData);
     }
   };
 
   const removeColumn = (colIndex: number) => {
-    const newHeaders = headers.filter((_, index) => index !== colIndex);
-    const newData = data.map(row => row.filter((_, index) => index !== colIndex));
-    updateStateAndSession(newHeaders, newData);
+    const newHeaders = editedHeaders.filter((_, index) => index !== colIndex);
+    const newData = editedData.map(row => row.filter((_, index) => index !== colIndex));
+    updateStateAndValidate(newHeaders, newData);
   };
 
   const handleCleanup = () => {
-    const originalRowCount = data.length;
-    const originalColCount = headers.length;
+    const originalRowCount = editedData.length;
+    const originalColCount = editedHeaders.length;
 
     // Remove empty rows
-    const nonEmptyRows = data.filter(row => row.some(cell => String(cell).trim() !== ''));
+    const nonEmptyRows = editedData.filter(row => row.some(cell => String(cell).trim() !== ''));
     
     // Find empty columns
     const emptyColIndexes: Set<number> = new Set();
     if (nonEmptyRows.length > 0) {
-        for (let i = 0; i < headers.length; i++) {
+        for (let i = 0; i < editedHeaders.length; i++) {
             const isColumnEmpty = nonEmptyRows.every(row => !row[i] || String(row[i]).trim() === '');
-            const isHeaderEmpty = !headers[i] || headers[i].trim() === '';
+            const isHeaderEmpty = !editedHeaders[i] || editedHeaders[i].trim() === '';
             if (isColumnEmpty && isHeaderEmpty) {
                 emptyColIndexes.add(i);
             }
@@ -276,14 +164,14 @@ export function DataFileEditor() {
     }
     
     // Filter headers and data based on empty columns
-    const newHeaders = headers.filter((_, index) => !emptyColIndexes.has(index));
+    const newHeaders = editedHeaders.filter((_, index) => !emptyColIndexes.has(index));
     const newData = nonEmptyRows.map(row => row.filter((_, index) => !emptyColIndexes.has(index)));
     
     const rowsRemoved = originalRowCount - newData.length;
     const colsRemoved = originalColCount - newHeaders.length;
 
     if (rowsRemoved > 0 || colsRemoved > 0) {
-      updateStateAndSession(newHeaders, newData);
+      updateStateAndValidate(newHeaders, newData);
       toast({
         title: 'Cleanup Complete',
         description: `Removed ${rowsRemoved} empty row(s) and ${colsRemoved} empty column(s).`,
@@ -296,23 +184,13 @@ export function DataFileEditor() {
     }
   };
 
-  if (error) {
-    return (
-        <Alert variant="destructive">
-            <TriangleAlert className="h-4 w-4" />
-            <AlertTitle>Error</AlertTitle>
-            <AlertDescription>{error}</AlertDescription>
-        </Alert>
-    )
-  }
-
-  if (!fileName) {
+  if (!dataFile) {
     return (
         <Alert>
             <UploadCloud className="h-4 w-4" />
             <AlertTitle>No Data File Uploaded</AlertTitle>
             <AlertDescription>
-                Please go to the <Link href="/dashboard/project-explorer" className="font-medium text-primary hover:underline">Project Management</Link> page to upload a file first.
+                Please go to the <Link href="/dashboard/project-management" className="font-medium text-primary hover:underline">Project Management</Link> page to upload a file first.
             </AlertDescription>
         </Alert>
     );
@@ -328,7 +206,7 @@ export function DataFileEditor() {
                     <ul className="list-disc pl-5">
                         {validationErrors.map((err, i) => (
                             <li key={i}>
-                                {'type' in err ? err.message : `Row ${err.rowIndex + 1}: ${err.message} in the '${headers[err.colIndex]}' column.`}
+                                {'type' in err ? err.message : `Row ${err.rowIndex + 1}: ${err.message} in the '${editedHeaders[err.colIndex]}' column.`}
                             </li>
                         ))}
                     </ul>
@@ -349,7 +227,7 @@ export function DataFileEditor() {
                 Clean Up Data
             </Button>
             <div className="flex-grow"></div>
-            <Button onClick={handleDownload} disabled={data.length === 0}>
+            <Button onClick={handleDownload} disabled={editedData.length === 0}>
                 <Download className="mr-2 h-4 w-4" />
                 Save & Download Changes
             </Button>
@@ -358,7 +236,7 @@ export function DataFileEditor() {
             <Table className="min-w-full">
                 <TableHeader>
                 <TableRow>
-                    {headers.map((header, index) => (
+                    {editedHeaders.map((header, index) => (
                     <TableHead key={index} className="relative group whitespace-nowrap">
                         {header}
                         <AlertDialog>
@@ -389,9 +267,9 @@ export function DataFileEditor() {
                 </TableRow>
                 </TableHeader>
                 <TableBody>
-                {data.map((row, rowIndex) => (
+                {editedData.map((row, rowIndex) => (
                     <TableRow key={rowIndex}>
-                    {headers.map((_, colIndex) => {
+                    {editedHeaders.map((_, colIndex) => {
                         const isInvalid = validationErrors.some(err => 'rowIndex' in err && err.rowIndex === rowIndex && err.colIndex === colIndex);
                         return (
                             <TableCell key={colIndex}>

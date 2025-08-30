@@ -1,86 +1,21 @@
 
 "use client";
 
-import { useState, useEffect } from "react";
 import { DependencyChecker } from "@/components/dashboard/dependency-checker";
 import { ProjectUpload } from "@/components/dashboard/project-upload";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import JSZip from 'jszip';
-import { useToast } from "@/hooks/use-toast";
-
+import { useExecutionContext } from "@/contexts/execution-context";
 
 export default function ProjectManagementPage() {
-  const [projectFile, setProjectFile] = useState<File | null>(null);
-  const [requirementsContent, setRequirementsContent] = useState<string | null>(null);
-  const { toast } = useToast();
-
-   useEffect(() => {
-    // Restore file state from sessionStorage on component mount
-    const storedProjectFileName = sessionStorage.getItem('uploadedProjectFileName');
-     if (storedProjectFileName) {
-        // We create a dummy file object because we don't have the content,
-        // but this is enough to show the user which file is "active".
-        // The actual parsing logic will handle fetching content if needed.
-        const dummyProjectFile = new File([], storedProjectFileName, { type: 'application/zip' });
-        setProjectFile(dummyProjectFile);
-        // Also try to restore requirements content
-        const storedReqs = sessionStorage.getItem('requirementsContent');
-        if (storedReqs) {
-            setRequirementsContent(storedReqs);
-        }
-    }
-  }, []);
-
-  const handleProjectFileChange = async (file: File | null) => {
-    setProjectFile(file);
-    if (!file) {
-      setRequirementsContent(null);
-      sessionStorage.removeItem('uploadedProjectFileName');
-      sessionStorage.removeItem('requirementsContent');
-      return;
-    }
-
-    sessionStorage.setItem('uploadedProjectFileName', file.name);
-
-    try {
-      const zip = await JSZip.loadAsync(file);
-      let reqFile: JSZip.JSZipObject | null = null;
-      
-      // Search for requirements.txt in the zip file recursively
-      zip.forEach((relativePath, zipEntry) => {
-        if (relativePath.endsWith('requirements.txt') && !zipEntry.dir) {
-          reqFile = zipEntry;
-        }
-      });
-
-      if (reqFile) {
-        const content = await reqFile.async('string');
-        setRequirementsContent(content);
-        sessionStorage.setItem('requirementsContent', content);
-         toast({
-            title: 'Found requirements.txt',
-            description: "Dependencies are ready to be scanned.",
-        });
-      } else {
-        setRequirementsContent(null);
-        sessionStorage.removeItem('requirementsContent');
-        toast({
-            variant: 'default',
-            title: 'No requirements.txt found',
-            description: "The uploaded project does not contain a requirements.txt file.",
-        });
-      }
-    } catch (error) {
-      console.error("Error reading zip file:", error);
-      toast({
-        variant: 'destructive',
-        title: 'Error processing project',
-        description: 'Could not read the contents of the uploaded zip file.',
-      });
-      setRequirementsContent(null);
-      sessionStorage.removeItem('requirementsContent');
-    }
-  };
+  const { 
+    requirementsContent, 
+    projectFile,
+    dataFile,
+    handleProjectFileUpload,
+    handleDataFileUpload,
+    clearProjectFile,
+    clearDataFile
+  } = useExecutionContext();
 
   return (
     <div className="space-y-6">
@@ -88,8 +23,12 @@ export default function ProjectManagementPage() {
         Project Management
       </h1>
       <ProjectUpload 
-        onProjectFileChange={handleProjectFileChange} 
-        initialProjectFile={projectFile}
+        projectFile={projectFile}
+        dataFile={dataFile}
+        onProjectFileChange={handleProjectFileUpload}
+        onDataFileChange={handleDataFileUpload}
+        onClearProjectFile={clearProjectFile}
+        onClearDataFile={clearDataFile}
       />
       <Card>
         <CardHeader>

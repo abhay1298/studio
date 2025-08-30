@@ -1,50 +1,21 @@
+
 "use client";
 
-import { useState, useEffect, useCallback } from 'react';
-import { ProjectExplorer as ProjectExplorerComponent, TestSuite } from '@/components/dashboard/project-explorer';
-import { useToast } from '@/hooks/use-toast';
+import { useEffect } from 'react';
+import { ProjectExplorer as ProjectExplorerComponent } from '@/components/dashboard/project-explorer';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
-import { ServerCrash, FileCode, RefreshCw } from 'lucide-react';
+import { ServerCrash, RefreshCw } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import { useExecutionContext } from '@/contexts/execution-context';
 
 export default function ProjectExplorerPage() {
-  const [testSuites, setTestSuites] = useState<TestSuite[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const { toast } = useToast();
-
-  const fetchSuites = useCallback(async () => {
-    setIsLoading(true);
-    setError(null);
-    try {
-        const response = await fetch('/api/list-suites');
-        if (!response.ok) {
-            const errorData = await response.json();
-            throw new Error(errorData.error || 'Failed to fetch suites from the backend.');
-        }
-        const suites = await response.json();
-        setTestSuites(suites);
-        if (suites.length === 0) {
-           toast({
-                variant: 'default',
-                title: 'No Test Suites Found',
-                description: "The backend didn't find any .robot files with test cases in the configured directory.",
-            });
-        }
-    } catch (e: any) {
-        console.error("Failed to fetch test suites:", e);
-        setError(e.message || 'An unknown error occurred.');
-        toast({
-            variant: 'destructive',
-            title: 'Error Loading Project',
-            description: e.message || 'Could not connect to the backend to get the project structure.',
-        });
-    } finally {
-        setIsLoading(false);
-    }
-  }, [toast]);
-
+  const { 
+    testSuites, 
+    isLoadingSuites, 
+    suiteLoadError, 
+    fetchSuites 
+  } = useExecutionContext();
 
   useEffect(() => {
     fetchSuites();
@@ -63,12 +34,12 @@ export default function ProjectExplorerPage() {
             </CardDescription>
           </CardHeader>
           <CardContent>
-            {error ? (
+            {suiteLoadError ? (
                 <Alert variant="destructive">
                     <ServerCrash className="h-4 w-4" />
                     <AlertTitle>Could Not Load Project</AlertTitle>
                     <AlertDescription>
-                        <p>{error}</p>
+                        <p>{suiteLoadError}</p>
                         <p className="mt-2 text-xs">Please ensure the Python backend server is running and the `TESTS_DIRECTORY` in `server.py` is configured correctly.</p>
                     </AlertDescription>
                     <Button variant="secondary" size="sm" onClick={fetchSuites} className="mt-4">
@@ -77,7 +48,7 @@ export default function ProjectExplorerPage() {
                     </Button>
                 </Alert>
             ) : (
-                <ProjectExplorerComponent suites={testSuites} isLoading={isLoading} />
+                <ProjectExplorerComponent suites={testSuites} isLoading={isLoadingSuites} />
             )}
           </CardContent>
         </Card>

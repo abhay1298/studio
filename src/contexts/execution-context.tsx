@@ -1,11 +1,13 @@
 
 "use client";
 
-import { createContext, useContext, useState, useCallback, ReactNode } from 'react';
+import { createContext, useContext, useState, useCallback, ReactNode, useEffect, Dispatch, SetStateAction } from 'react';
 import { useToast } from "@/hooks/use-toast";
-import { CheckCircle2, XCircle } from 'lucide-react';
+import { CheckCircle2, FileCheck2, FileX2, XCircle } from 'lucide-react';
 import Papa from 'papaparse';
 import * as XLSX from 'xlsx';
+import JSZip from 'jszip';
+import type { TestSuite } from '@/components/dashboard/project-explorer';
 
 
 type ExecutionStatus = "idle" | "running" | "success" | "failed" | "stopped";
@@ -16,29 +18,59 @@ type RunConfig = {
   testcase: string;
 };
 
+type TableData = (string | number)[][];
+
 interface ExecutionContextType {
   status: ExecutionStatus;
   logs: string[];
   lastFailedLogs: string;
   runConfig: RunConfig;
+  projectFile: File | null;
+  dataFile: File | null;
+  requirementsContent: string | null;
+  testSuites: TestSuite[];
+  isLoadingSuites: boolean;
+  suiteLoadError: string | null;
+  editedData: TableData;
+  setEditedData: Dispatch<SetStateAction<TableData>>;
+  editedHeaders: string[];
+  setEditedHeaders: Dispatch<SetStateAction<string[]>>;
+  fetchSuites: () => Promise<void>;
   handleInputChange: (field: keyof RunConfig, value: string) => void;
   handleRun: (runType: string) => Promise<void>;
   handleStop: () => Promise<void>;
   clearLogs: () => void;
+  handleProjectFileUpload: (file: File | null) => void;
+  handleDataFileUpload: (file: File | null) => void;
+  clearProjectFile: () => void;
+  clearDataFile: () => void;
 }
 
 const ExecutionContext = createContext<ExecutionContextType | undefined>(undefined);
 
+const fileToDataURL = (file: File): Promise<string> => {
+    return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result as string);
+        reader.onerror = error => reject(error);
+        reader.readAsDataURL(file);
+    });
+};
+
+const dataURLtoBlob = (dataurl: string) => {
+    return fetch(dataurl).then(res => res.blob());
+};
+
+
 const validateOrchestratorData = async (): Promise<string | null> => {
-    const fileDataUrl = sessionStorage.getItem('uploadedDataFile');
-    const fileName = sessionStorage.getItem('uploadedDataFileName');
+    const fileDataUrl = sessionStorage.getItem('dataFileContent');
+    const fileName = sessionStorage.getItem('dataFileName');
     if (!fileDataUrl || !fileName) {
         return 'No data file has been uploaded.';
     }
 
     try {
-        const res = await fetch(fileDataUrl);
-        const blob = await res.blob();
+        const blob = await dataURLtoBlob(fileDataUrl);
         let headers: string[] = [];
         let data: any[] = [];
 
@@ -92,7 +124,30 @@ export function ExecutionProvider({ children }: { children: ReactNode }) {
     suite: '',
     testcase: '',
   });
+
+  const [projectFile, setProjectFile] = useState<File | null>(null);
+  const [dataFile, setDataFile] = useState<File | null>(null);
+  const [requirementsContent, setRequirementsContent] = useState<string | null>(null);
+
+  const [testSuites, setTestSuites] = useState<TestSuite[]>([]);
+  const [isLoadingSuites, setIsLoadingSuites] = useState(false);
+  const [suiteLoadError, setSuiteLoadError] = useState<string | null>(null);
+
+  const [editedData, setEditedData] = useState<TableData>([]);
+  const [editedHeaders, setEditedHeaders] = useState<string[]>([]);
+
   const { toast } = useToast();
+
+  // Load initial state from session storage
+   useEffect(() => {
+    const projectFileName = sessionStorage.getItem('projectFileName');
+    if (projectFileName) setProjectFile(new File([], projectFileName));
+
+    const dataFileName = sessionStorage.getItem('dataFileName');
+    if (dataFileName) setDataFile(new File([], dataFileName));
+
+    setRequirementsContent(sessionStorage.getItem('requirementsContent'));
+   }, []);
 
   const addLog = useCallback((message: string) => {
     const timestamp = new Date().toLocaleTimeString();
@@ -186,7 +241,6 @@ export function ExecutionProvider({ children }: { children: ReactNode }) {
       const duration = ((endTime - startTime) / 1000).toFixed(2) + 's';
       const suiteName = getSuiteNameForRun(runType);
       
-      // A special check to see if the status was changed by the user stopping the run
       if (status === 'running') {
         if (!response.ok) {
             const result = await response.json();
@@ -235,7 +289,6 @@ export function ExecutionProvider({ children }: { children: ReactNode }) {
       }
 
     } catch (error) {
-       // A special check to see if the status was changed by the user stopping the run
       if (status === 'running') {
         const endTime = Date.now();
         const duration = ((endTime - startTime) / 1000).toFixed(2) + 's';
@@ -263,7 +316,6 @@ export function ExecutionProvider({ children }: { children: ReactNode }) {
 
   const handleStop = useCallback(async () => {
     addLog('Attempting to stop execution...');
-    // Set status immediately to give user feedback and prevent race conditions.
     setStatus('stopped');
     try {
         const response = await fetch('/api/stop-tests', { method: 'POST' });
@@ -287,15 +339,195 @@ export function ExecutionProvider({ children }: { children: ReactNode }) {
     }
   }, [addLog, toast]);
 
+  const parseAndSetDataFile = useCallback(async (file: File) => {
+    try {
+        if (file.name.endsWith('.csv')) {
+            const text = await file.text();
+            Papa.parse(text, {
+                header: true,
+                skipEmptyLines: true,
+                complete: (result) => {
+                    const parsedHeaders = result.meta.fields || [];
+                    const parsedData = result.data.map((row: any) => Object.values(row)) as TableData;
+                    setEditedHeaders(parsedHeaders);
+                    setEditedData(parsedData);
+                }
+            });
+        } else if (file.name.endsWith('.xlsx')) {
+            const arrayBuffer = await file.arrayBuffer();
+            const wb = XLSX.read(arrayBuffer, { type: 'array' });
+            const wsname = wb.SheetNames[0];
+            const ws = wb.Sheets[wsname];
+            const jsonData: any[][] = XLSX.utils.sheet_to_json(ws, { header: 1 });
+            if (jsonData.length > 0) {
+                const parsedHeaders = jsonData[0].map(String);
+                const parsedData = jsonData.slice(1);
+                setEditedHeaders(parsedHeaders);
+                setEditedData(parsedData);
+            }
+        }
+    } catch (e) {
+        console.error("Error parsing data file", e);
+        toast({ variant: 'destructive', title: "Error reading data file" });
+    }
+  }, [toast]);
+
+  const clearProjectFile = useCallback(() => {
+    setProjectFile(null);
+    setRequirementsContent(null);
+    sessionStorage.removeItem('projectFileName');
+    sessionStorage.removeItem('projectFileContent');
+    sessionStorage.removeItem('requirementsContent');
+    toast({ title: 'Project Cleared' });
+  }, [toast]);
+
+  const clearDataFile = useCallback(() => {
+    setDataFile(null);
+    setEditedData([]);
+    setEditedHeaders([]);
+    sessionStorage.removeItem('dataFileName');
+    sessionStorage.removeItem('dataFileContent');
+    toast({ title: 'Data File Cleared' });
+  }, [toast]);
+
+  const handleDataFileUpload = useCallback(async (file: File | null) => {
+    if (!file) {
+      clearDataFile();
+      return;
+    }
+    setDataFile(file);
+    try {
+      const dataUrl = await fileToDataURL(file);
+      sessionStorage.setItem('dataFileName', file.name);
+      sessionStorage.setItem('dataFileContent', dataUrl);
+      parseAndSetDataFile(file);
+      toast({
+        title: 'Data File Uploaded',
+        description: file.name,
+        action: <FileCheck2 className="text-green-500" />,
+      });
+    } catch (e) {
+      toast({ variant: 'destructive', title: "Could not read data file" });
+    }
+  }, [clearDataFile, parseAndSetDataFile, toast]);
+
+  const handleProjectFileUpload = useCallback(async (file: File | null) => {
+    if (!file) {
+      clearProjectFile();
+      return;
+    }
+
+    setProjectFile(file);
+    sessionStorage.setItem('projectFileName', file.name);
+    setRequirementsContent(null);
+    sessionStorage.removeItem('requirementsContent');
+    
+    try {
+      const dataUrl = await fileToDataURL(file);
+      sessionStorage.setItem('projectFileContent', dataUrl);
+
+      toast({
+        title: 'Project Uploaded Successfully',
+        description: file.name,
+        action: <FileCheck2 className="text-green-500" />,
+      });
+
+      const zip = await JSZip.loadAsync(file);
+      
+      // Find and set requirements.txt
+      let reqFileEntry: JSZip.JSZipObject | null = null;
+      zip.forEach((relativePath, zipEntry) => {
+        if (relativePath.endsWith('requirements.txt') && !zipEntry.dir) {
+          reqFileEntry = zipEntry;
+        }
+      });
+
+      if (reqFileEntry) {
+        const content = await reqFileEntry.async('string');
+        setRequirementsContent(content);
+        sessionStorage.setItem('requirementsContent', content);
+         toast({
+            title: 'Found requirements.txt',
+            description: "Dependencies are ready to be scanned.",
+        });
+      } else {
+        toast({
+            variant: 'default',
+            title: 'No requirements.txt found',
+            description: "The uploaded project does not contain a requirements.txt file.",
+        });
+      }
+      
+      // Find and auto-load data file if not present
+      if (!dataFile) {
+        let dataFileEntry: JSZip.JSZipObject | null = null;
+        zip.forEach((relativePath, zipEntry) => {
+          if ((relativePath.toLowerCase().endsWith('.csv') || relativePath.toLowerCase().endsWith('.xlsx')) && !zipEntry.dir) {
+            dataFileEntry = zipEntry;
+          }
+        });
+        
+        if (dataFileEntry) {
+          const content = await dataFileEntry.async('blob');
+          const foundDataFile = new File([content], dataFileEntry.name);
+          handleDataFileUpload(foundDataFile);
+        }
+      }
+
+    } catch (error) {
+      console.error("Error reading zip file:", error);
+      toast({
+        variant: 'destructive',
+        title: 'Error processing project',
+        description: 'Could not read the contents of the uploaded zip file.',
+      });
+      clearProjectFile();
+    }
+  }, [clearProjectFile, dataFile, handleDataFileUpload, toast]);
+  
+  const fetchSuites = useCallback(async () => {
+    setIsLoadingSuites(true);
+    setSuiteLoadError(null);
+    try {
+        const response = await fetch('/api/list-suites');
+        if (!response.ok) {
+            const errorData = await response.json();
+            throw new Error(errorData.error || 'Failed to fetch suites from the backend.');
+        }
+        const suites = await response.json();
+        setTestSuites(suites);
+    } catch (e: any) {
+        console.error("Failed to fetch test suites:", e);
+        setSuiteLoadError(e.message || 'An unknown error occurred.');
+    } finally {
+        setIsLoadingSuites(false);
+    }
+  }, []);
+
   const value = {
     status,
     logs,
     lastFailedLogs,
     runConfig,
+    projectFile,
+    dataFile,
+    requirementsContent,
+    testSuites,
+    isLoadingSuites,
+    suiteLoadError,
+    editedData,
+    setEditedData,
+    editedHeaders,
+    setEditedHeaders,
+    fetchSuites,
     handleInputChange,
     handleRun,
     handleStop,
     clearLogs,
+    handleProjectFileUpload,
+    handleDataFileUpload,
+    clearProjectFile,
+    clearDataFile,
   };
 
   return (

@@ -19,170 +19,73 @@ import { useToast } from '@/hooks/use-toast';
 import { UploadCloud, FileCheck2, FileX2, Pencil, GitBranch, Loader2, FolderArchive, FileSpreadsheet } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../ui/tabs';
-import * as JSZip from 'jszip';
 
 
 type ProjectUploadProps = {
+    projectFile: File | null;
+    dataFile: File | null;
     onProjectFileChange: (file: File | null) => void;
-    initialProjectFile: File | null;
+    onDataFileChange: (file: File | null) => void;
+    onClearProjectFile: () => void;
+    onClearDataFile: () => void;
 };
 
-// Helper to create a mock data file for the simulation
-const createMockDataFile = (content: string | ArrayBuffer, name: string): File => {
-    const blob = new Blob([content]);
-    return new File([blob], name);
-};
-
-
-export function ProjectUpload({ onProjectFileChange, initialProjectFile }: ProjectUploadProps) {
+export function ProjectUpload({ 
+    projectFile,
+    dataFile,
+    onProjectFileChange,
+    onDataFileChange,
+    onClearProjectFile,
+    onClearDataFile
+}: ProjectUploadProps) {
   const { toast } = useToast();
   const router = useRouter();
-  const [projectFile, setProjectFile] = useState<File | null>(initialProjectFile);
-  const [dataFile, setDataFile] = useState<File | null>(null);
   const [gitUrl, setGitUrl] = useState('');
   const [isCloning, setIsCloning] = useState(false);
-
-  useEffect(() => {
-    setProjectFile(initialProjectFile);
-  }, [initialProjectFile]);
-
-
-  useEffect(() => {
-    // Restore data file state from sessionStorage on component mount
-    const storedDataFileName = sessionStorage.getItem('uploadedDataFileName');
-    if (storedDataFileName) {
-        const dummyDataFile = new File([], storedDataFileName, { type: 'text/csv' });
-        setDataFile(dummyDataFile);
-    }
-  }, []);
-
-  const clearProjectFile = () => {
-    setProjectFile(null);
-    onProjectFileChange(null);
-    toast({ title: 'Project Cleared', description: 'The active project has been removed.' });
-  };
-  
-  const clearDataFile = () => {
-    setDataFile(null);
-    if (typeof window !== 'undefined') {
-      sessionStorage.removeItem('uploadedDataFile');
-      sessionStorage.removeItem('uploadedDataFileName');
-      sessionStorage.removeItem('editedDataHeaders');
-      sessionStorage.removeItem('editedDataRows');
-      window.dispatchEvent(new Event('storage'));
-    }
-    toast({ title: 'Data File Cleared', description: 'The orchestrator data file has been removed.' });
-  };
-
-
-  // This function will be called to simulate loading a data file
-  const autoLoadDataFile = (foundFile: File) => {
-    setDataFile(foundFile);
-    const reader = new FileReader();
-    reader.onload = function(event) {
-        if (typeof window !== 'undefined' && event.target?.result) {
-            sessionStorage.setItem('uploadedDataFile', event.target.result as string);
-            sessionStorage.setItem('uploadedDataFileName', foundFile.name);
-            // Clear any old edited data
-            sessionStorage.removeItem('editedDataHeaders');
-            sessionStorage.removeItem('editedDataRows');
-            // This event tells other components that the data file has changed
-            window.dispatchEvent(new Event('storage'));
-        }
-    };
-    reader.readAsDataURL(foundFile);
-    toast({
-        title: 'Orchestrator File Found',
-        description: `Automatically loaded '${foundFile.name}' from your project.`,
-        action: <FileCheck2 className="text-green-500" />,
-    });
-  };
 
   const handleFileChange = async (
     e: React.ChangeEvent<HTMLInputElement>,
     fileType: 'project' | 'data'
   ) => {
-    const file = e.target.files?.[0];
-    if (!file) {
-      if (fileType === 'project') clearProjectFile();
-      if (fileType === 'data') clearDataFile();
-      return;
-    }
-
-    const allowedProjectTypes = ['application/zip', 'application/x-zip-compressed'];
-    const allowedDataTypes = [
-      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-      'text/csv',
-    ];
-
-    let isValid = false;
-
+    const file = e.target.files?.[0] || null;
+    
     if (fileType === 'project') {
-      if (allowedProjectTypes.includes(file.type)) {
-        isValid = true;
-        setProjectFile(file);
-        onProjectFileChange(file); // Notify parent
-
-        // Check for data file inside zip
-        try {
-            const zip = await JSZip.loadAsync(file);
-            let dataFileFound: JSZip.JSZipObject | null = null;
-            zip.forEach((relativePath, zipEntry) => {
-                if (relativePath.toLowerCase().endsWith('.csv') || relativePath.toLowerCase().endsWith('.xlsx')) {
-                    dataFileFound = zipEntry;
-                }
-            });
-
-            if (dataFileFound) {
-                const content = await dataFileFound.async('arraybuffer');
-                const mockFile = createMockDataFile(content, dataFileFound.name);
-                autoLoadDataFile(mockFile);
+        const allowedProjectTypes = ['application/zip', 'application/x-zip-compressed'];
+        if (file && allowedProjectTypes.includes(file.type)) {
+            onProjectFileChange(file);
+        } else {
+            onProjectFileChange(null);
+            if (file) { // if a file was selected but it's the wrong type
+                toast({
+                  variant: 'destructive',
+                  title: 'Error: Invalid File Format',
+                  description: `Please upload a valid project file (.zip).`,
+                  action: <FileX2 className="text-red-500" />,
+                });
             }
-        } catch (error) {
-            console.error("Error reading zip file:", error);
-            toast({ variant: 'destructive', title: 'Could not inspect zip file.' });
         }
-        
-      } else {
-        setProjectFile(null);
-        onProjectFileChange(null);
-      }
     } else if (fileType === 'data') {
-      if (allowedDataTypes.includes(file.type)) {
-        isValid = true;
-        setDataFile(file);
-        const reader = new FileReader();
-        reader.onload = function(event) {
-          if (typeof window !== 'undefined' && event.target?.result) {
-            sessionStorage.setItem('uploadedDataFile', event.target.result as string);
-            sessionStorage.setItem('uploadedDataFileName', file.name);
-            sessionStorage.removeItem('editedDataHeaders');
-            sessionStorage.removeItem('editedDataRows');
-            window.dispatchEvent(new Event('storage'));
-          }
-        };
-        reader.readAsDataURL(file);
-      } else {
-        setDataFile(null);
-      }
+        const allowedDataTypes = [
+            'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            'text/csv',
+        ];
+        if (file && allowedDataTypes.includes(file.type)) {
+            onDataFileChange(file);
+        } else {
+            onDataFileChange(null);
+             if (file) {
+                toast({
+                  variant: 'destructive',
+                  title: 'Error: Invalid File Format',
+                  description: `Please upload a valid data file (.xlsx, .csv).`,
+                  action: <FileX2 className="text-red-500" />,
+                });
+            }
+        }
     }
-
-    if (isValid) {
-      toast({
-        title: 'File Uploaded Successfully',
-        description: `${file.name}`,
-        action: <FileCheck2 className="text-green-500" />,
-      });
-      if (fileType === 'project') {
-        window.dispatchEvent(new CustomEvent('projectUpdated'));
-      }
-    } else {
-        toast({
-          variant: 'destructive',
-          title: 'Error: Invalid File Format',
-          description: `Please upload a valid ${fileType} file.`,
-          action: <FileX2 className="text-red-500" />,
-        });
+     // Reset the input value so the same file can be re-uploaded
+    if (e.target) {
+      e.target.value = "";
     }
   };
   
@@ -205,7 +108,6 @@ export function ProjectUpload({ onProjectFileChange, initialProjectFile }: Proje
         setIsCloning(false);
         const repoName = gitUrl.split('/').pop()?.replace('.git', '') || 'repository';
         const dummyFile = new File([], `${repoName}.zip`, { type: 'application/zip'});
-        setProjectFile(dummyFile);
         onProjectFileChange(dummyFile);
         
         toast({
@@ -291,7 +193,7 @@ export function ProjectUpload({ onProjectFileChange, initialProjectFile }: Proje
                             <span className="text-sm text-muted-foreground truncate max-w-xs">{projectFile.name}</span>
                         </div>
                     </div>
-                    <Button variant="destructive" size="sm" onClick={clearProjectFile}>Clear</Button>
+                    <Button variant="destructive" size="sm" onClick={onClearProjectFile}>Clear</Button>
                 </div>
             </div>
         </CardContent>
@@ -337,7 +239,7 @@ export function ProjectUpload({ onProjectFileChange, initialProjectFile }: Proje
                             <span className="text-sm text-muted-foreground truncate max-w-xs">{dataFile.name}</span>
                         </div>
                     </div>
-                    <Button variant="destructive" size="sm" onClick={clearDataFile}>Clear</Button>
+                    <Button variant="destructive" size="sm" onClick={onClearDataFile}>Clear</Button>
                 </div>
             </div>
         )}
@@ -355,13 +257,3 @@ export function ProjectUpload({ onProjectFileChange, initialProjectFile }: Proje
     </div>
   );
 }
-
-const Separator = React.forwardRef<
-  React.ElementRef<'div'>,
-  React.HTMLAttributes<HTMLDivElement>
->(({ className, ...props }, ref) => (
-    <div ref={ref} className={cn("shrink-0 bg-border h-[1px] w-full", className)} {...props} />
-));
-Separator.displayName = 'Separator';
-
-    
