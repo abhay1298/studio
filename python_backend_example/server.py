@@ -118,9 +118,9 @@ def run_robot_tests():
 
             # Archive video file
             for f in os.listdir(output_dir):
-                if f.lower().endswith('.mp4'):
+                if f.lower().endswith('.avi'):
                     temp_video_path = os.path.join(output_dir, f)
-                    video_file = f"video-{timestamp}.mp4"
+                    video_file = f"video-{timestamp}.avi"
                     shutil.move(temp_video_path, os.path.join(REPORTS_DIR, video_file))
                     logs.append(f"Successfully archived video to {video_file}")
                     break # Assume only one video per run
