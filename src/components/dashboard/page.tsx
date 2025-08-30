@@ -1,7 +1,7 @@
 
 "use client";
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import {
   Card,
   CardContent,
@@ -34,6 +34,10 @@ type RecentRun = {
   duration: string;
   date: string;
 };
+
+const PROJECT_FILE_NAME_KEY = 'uploadedProjectFileName';
+const TEST_SUITES_KEY = 'parsedTestSuites';
+
 
 export default function DashboardPageContent() {
   const [projectFile, setProjectFile] = useState<File | null>(null);
@@ -70,6 +74,8 @@ export default function DashboardPageContent() {
     setProjectFile(file);
     if (!file) {
         setTestSuites([]);
+        sessionStorage.removeItem(PROJECT_FILE_NAME_KEY);
+        sessionStorage.removeItem(TEST_SUITES_KEY);
         return;
     }
 
@@ -88,10 +94,16 @@ export default function DashboardPageContent() {
             });
         
         await Promise.all(robotFilePromises);
-        setTestSuites(suites.sort((a,b) => a.name.localeCompare(b.name)));
+        const sortedSuites = suites.sort((a,b) => a.name.localeCompare(b.name));
+        setTestSuites(sortedSuites);
+        sessionStorage.setItem(TEST_SUITES_KEY, JSON.stringify(sortedSuites));
+
 
     } catch (error) {
         console.error("Failed to parse zip file:", error);
+        setTestSuites([]);
+        sessionStorage.removeItem(TEST_SUITES_KEY);
+
     } finally {
         setIsParsing(false);
     }
@@ -100,12 +112,23 @@ export default function DashboardPageContent() {
 
   useEffect(() => {
     // Restore project file state from sessionStorage
-    const storedProjectFileName = sessionStorage.getItem('uploadedProjectFileName');
+    const storedProjectFileName = sessionStorage.getItem(PROJECT_FILE_NAME_KEY);
     if (storedProjectFileName) {
       // Create a dummy file to represent the state, actual parsing will be triggered by re-upload
       const dummyFile = new File([], storedProjectFileName, { type: 'application/zip' });
       setProjectFile(dummyFile);
     }
+    // Restore parsed suites from sessionStorage
+    const storedSuites = sessionStorage.getItem(TEST_SUITES_KEY);
+    if (storedSuites) {
+        try {
+            setTestSuites(JSON.parse(storedSuites));
+        } catch (e) {
+            console.error("Failed to parse stored suites", e);
+            sessionStorage.removeItem(TEST_SUITES_KEY);
+        }
+    }
+
   }, []);
 
   const loadRunHistory = () => {

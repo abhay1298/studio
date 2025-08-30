@@ -26,6 +26,8 @@ type ProjectUploadProps = {
   projectFile: File | null;
 };
 
+const PROJECT_FILE_NAME_KEY = 'uploadedProjectFileName';
+
 // Helper to create a mock data file for the simulation
 const createMockDataFile = () => {
     const csvContent = `test_case,user,password,id,priority
@@ -83,7 +85,7 @@ export function ProjectUpload({ onProjectFileChange, projectFile }: ProjectUploa
     if (!file) {
       if (fileType === 'project') {
         onProjectFileChange(null);
-        sessionStorage.removeItem('uploadedProjectFileName');
+        sessionStorage.removeItem(PROJECT_FILE_NAME_KEY);
       }
       if (fileType === 'data') {
         setDataFile(null);
@@ -110,7 +112,7 @@ export function ProjectUpload({ onProjectFileChange, projectFile }: ProjectUploa
       if (allowedProjectTypes.includes(file.type)) {
         isValid = true;
         onProjectFileChange(file);
-        sessionStorage.setItem('uploadedProjectFileName', file.name);
+        sessionStorage.setItem(PROJECT_FILE_NAME_KEY, file.name);
         // SIMULATION: Check if project contains a data file
         if (file.name.includes("with-data")) {
             const mockData = createMockDataFile();
@@ -118,7 +120,7 @@ export function ProjectUpload({ onProjectFileChange, projectFile }: ProjectUploa
         }
       } else {
         onProjectFileChange(null);
-        sessionStorage.removeItem('uploadedProjectFileName');
+        sessionStorage.removeItem(PROJECT_FILE_NAME_KEY);
       }
     } else if (fileType === 'data') {
       if (allowedDataTypes.includes(file.type)) {
@@ -192,7 +194,7 @@ export function ProjectUpload({ onProjectFileChange, projectFile }: ProjectUploa
         const repoName = gitUrl.split('/').pop()?.replace('.git', '') || 'repository';
         const dummyFile = new File([], `${repoName}.zip`, { type: 'application/zip'});
         onProjectFileChange(dummyFile);
-        sessionStorage.setItem('uploadedProjectFileName', dummyFile.name);
+        sessionStorage.setItem(PROJECT_FILE_NAME_KEY, dummyFile.name);
         toast({
             title: 'Repository Cloned',
             description: `Successfully imported project from '${repoName}'.`,
@@ -210,7 +212,7 @@ export function ProjectUpload({ onProjectFileChange, projectFile }: ProjectUploa
   
   const handleClearProject = () => {
     onProjectFileChange(null);
-    sessionStorage.removeItem('uploadedProjectFileName');
+    sessionStorage.removeItem(PROJECT_FILE_NAME_KEY);
     toast({
         title: 'Project Cleared',
         description: 'The active project has been unloaded.',
