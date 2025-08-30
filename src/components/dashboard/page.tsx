@@ -27,7 +27,7 @@ import { Skeleton } from '../ui/skeleton';
 
 type RecentRun = {
   suite: string;
-  status: 'Success' | 'Failed' | 'Running';
+  status: 'Success' | 'Failed';
   duration: string;
   date: string;
 };
@@ -43,39 +43,46 @@ export default function DashboardPageContent() {
   });
 
   const loadRunHistory = () => {
-    setIsLoading(true);
-    // Ensure this runs only on the client
-    if (typeof window !== 'undefined') {
-      try {
-        const history = localStorage.getItem('robotMaestroRuns');
-        if (history) {
-          const runs = JSON.parse(history);
-          const latestRuns = runs.slice(-5).reverse();
-          setRecentRuns(latestRuns);
-          
-          const totalRuns = runs.length;
-          const passedRuns = runs.filter((r: any) => r.status === 'Success').length;
-          const passRate = totalRuns > 0 ? ((passedRuns / totalRuns) * 100).toFixed(1) + '%' : 'N/A';
-
-          const totalDuration = runs.reduce((acc: number, r: any) => {
-              const durationValue = r.duration ? parseFloat(r.duration) : 0;
-              return acc + (isNaN(durationValue) ? 0 : durationValue);
-          }, 0);
-          const avgDuration = totalRuns > 0 ? (totalDuration / totalRuns).toFixed(2) + 's' : '--';
-
-          setStats({ totalRuns, passRate, avgDuration });
-        } else {
-          // No history, set to default empty state
-           setStats({ totalRuns: 0, passRate: 'N/A', avgDuration: '--' });
-           setRecentRuns([]);
+    // This function will now be async to avoid blocking render
+    const loadData = async () => {
+        setIsLoading(true);
+        if (typeof window !== 'undefined') {
+          try {
+            const history = await localStorage.getItem('robotMaestroRuns');
+            if (history) {
+              const runs = JSON.parse(history);
+              if (runs.length > 0) {
+                const latestRuns = runs.slice(-5).reverse();
+                setRecentRuns(latestRuns);
+                
+                const totalRuns = runs.length;
+                const passedRuns = runs.filter((r: any) => r.status === 'Success').length;
+                const passRate = totalRuns > 0 ? ((passedRuns / totalRuns) * 100).toFixed(1) + '%' : 'N/A';
+      
+                const totalDuration = runs.reduce((acc: number, r: any) => {
+                    const durationValue = r.duration ? parseFloat(r.duration) : 0;
+                    return acc + (isNaN(durationValue) ? 0 : durationValue);
+                }, 0);
+                const avgDuration = totalRuns > 0 ? (totalDuration / totalRuns).toFixed(2) + 's' : '--';
+      
+                setStats({ totalRuns, passRate, avgDuration });
+              } else {
+                 setStats({ totalRuns: 0, passRate: 'N/A', avgDuration: '--' });
+                 setRecentRuns([]);
+              }
+            } else {
+              setStats({ totalRuns: 0, passRate: 'N/A', avgDuration: '--' });
+              setRecentRuns([]);
+            }
+          } catch (e) {
+            console.error("Failed to parse run history from localStorage", e);
+            setStats({ totalRuns: 0, passRate: 'N-A', avgDuration: '--' });
+            setRecentRuns([]);
+          }
         }
-      } catch (e) {
-        console.error("Failed to parse run history from localStorage", e);
-        setStats({ totalRuns: 0, passRate: 'N/A', avgDuration: '--' });
-        setRecentRuns([]);
-      }
+        setIsLoading(false);
     }
-    setIsLoading(false);
+    loadData();
   };
 
   useEffect(() => {
@@ -106,7 +113,7 @@ export default function DashboardPageContent() {
             <CardHeader className="pb-2">
               <CardDescription>Pass Rate</CardDescription>
               <CardTitle className="font-headline text-4xl">{isLoading ? <Skeleton className="w-24 h-9"/> : stats.passRate}</CardTitle>
-            </Header>
+            </CardHeader>
             <CardContent>
               <div className="text-xs text-muted-foreground">
                 Based on all-time runs
