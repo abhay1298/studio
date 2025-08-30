@@ -2,7 +2,7 @@
 "use client";
 
 import * as React from 'react';
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   Card,
@@ -16,18 +16,15 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Button, buttonVariants } from '@/components/ui/button';
 import { useToast } from '@/hooks/use-toast';
-import { UploadCloud, FileCheck2, FileWarning, FileX2, Pencil, GitBranch, Loader2, XCircle } from 'lucide-react';
+import { UploadCloud, FileCheck2, FileWarning, FileX2, Pencil, GitBranch, Loader2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../ui/tabs';
-import { Alert, AlertDescription, AlertTitle } from '../ui/alert';
+
 
 type ProjectUploadProps = {
   onProjectFileChange: (file: File | null) => void;
   projectFile: File | null;
 };
-
-const PROJECT_FILE_KEY = 'uploadedProjectFile';
-const PROJECT_FILE_NAME_KEY = 'uploadedProjectFileName';
 
 // Helper to create a mock data file for the simulation
 const createMockDataFile = () => {
@@ -45,8 +42,8 @@ export function ProjectUpload({ onProjectFileChange, projectFile }: ProjectUploa
   const [gitUrl, setGitUrl] = useState('');
   const [isCloning, setIsCloning] = useState(false);
 
-  useEffect(() => {
-    // Restore state from sessionStorage on component mount
+  React.useEffect(() => {
+    // Restore data file state from sessionStorage on component mount
     const storedDataFileName = sessionStorage.getItem('uploadedDataFileName');
     if (storedDataFileName) {
         const dummyDataFile = new File([], storedDataFileName, { type: 'text/csv' });
@@ -84,11 +81,7 @@ export function ProjectUpload({ onProjectFileChange, projectFile }: ProjectUploa
   ) => {
     const file = e.target.files?.[0];
     if (!file) {
-      if (fileType === 'project') {
-        onProjectFileChange(null);
-        sessionStorage.removeItem(PROJECT_FILE_KEY);
-        sessionStorage.removeItem(PROJECT_FILE_NAME_KEY);
-      }
+      if (fileType === 'project') onProjectFileChange(null);
       if (fileType === 'data') {
         setDataFile(null);
         if (typeof window !== 'undefined') {
@@ -109,19 +102,11 @@ export function ProjectUpload({ onProjectFileChange, projectFile }: ProjectUploa
     ];
 
     let isValid = false;
-    const reader = new FileReader();
 
     if (fileType === 'project') {
       if (allowedProjectTypes.includes(file.type)) {
         isValid = true;
-        reader.onload = function(event) {
-            if (typeof window !== 'undefined' && event.target?.result) {
-                sessionStorage.setItem(PROJECT_FILE_KEY, event.target.result as string);
-                sessionStorage.setItem(PROJECT_FILE_NAME_KEY, file.name);
-                onProjectFileChange(file); // This will trigger the parsing
-            }
-        };
-        reader.readAsDataURL(file);
+        onProjectFileChange(file); // This will trigger the parsing in the parent
 
         // SIMULATION: Check if project contains a data file
         if (file.name.includes("with-data")) {
@@ -130,18 +115,16 @@ export function ProjectUpload({ onProjectFileChange, projectFile }: ProjectUploa
         }
       } else {
         onProjectFileChange(null);
-        sessionStorage.removeItem(PROJECT_FILE_KEY);
-        sessionStorage.removeItem(PROJECT_FILE_NAME_KEY);
       }
     } else if (fileType === 'data') {
       if (allowedDataTypes.includes(file.type)) {
         isValid = true;
         setDataFile(file);
+        const reader = new FileReader();
         reader.onload = function(event) {
           if (typeof window !== 'undefined' && event.target?.result) {
             sessionStorage.setItem('uploadedDataFile', event.target.result as string);
             sessionStorage.setItem('uploadedDataFileName', file.name);
-            // Clear any old edited data when a new file is uploaded
             sessionStorage.removeItem('editedDataHeaders');
             sessionStorage.removeItem('editedDataRows');
             window.dispatchEvent(new Event('storage'));
@@ -202,17 +185,11 @@ export function ProjectUpload({ onProjectFileChange, projectFile }: ProjectUploa
     setTimeout(() => {
         setIsCloning(false);
         const repoName = gitUrl.split('/').pop()?.replace('.git', '') || 'repository';
-        // Can't create a real zip, so we'll use a dummy file and name
         const dummyFile = new File([], `${repoName}.zip`, { type: 'application/zip'});
-        // Since this is a simulation, we can't fetch a real zip file's content
-        // so we'll just set the name and let the parent know.
-        // In a real scenario, the backend would handle the git clone and provide the zip.
-        sessionStorage.setItem(PROJECT_FILE_NAME_KEY, dummyFile.name);
-        sessionStorage.removeItem(PROJECT_FILE_KEY); // Remove any old file content
         onProjectFileChange(dummyFile);
         
         toast({
-            title: 'Repository Cloned',
+            title: 'Repository Imported',
             description: `Successfully imported project from '${repoName}'.`,
             action: <GitBranch className="text-green-500" />,
         });
@@ -226,46 +203,23 @@ export function ProjectUpload({ onProjectFileChange, projectFile }: ProjectUploa
     }, 2000);
   };
   
-  const handleClearProject = () => {
-    onProjectFileChange(null);
-    toast({
-        title: 'Project Cleared',
-        description: 'The active project has been unloaded.',
-    });
-  }
-
-
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="font-headline">Project Management</CardTitle>
+        <CardTitle className="font-headline">Load Project</CardTitle>
         <CardDescription>
-          Upload your project files or import from a Git repository.
+          Upload your project zip or import from Git to get started.
         </CardDescription>
       </CardHeader>
       
-      {projectFile ? (
-        <CardContent className="space-y-4">
-            <Alert className="border-green-500/50 text-green-700 dark:border-green-500/50 dark:text-green-400">
-                <FileCheck2 className="h-4 w-4 !text-green-500" />
-                <AlertTitle>Active Project: {projectFile.name}</AlertTitle>
-                <AlertDescription>
-                    The application will use this project for execution.
-                </AlertDescription>
-            </Alert>
-            <Button variant="outline" className="w-full" onClick={handleClearProject}>
-                <XCircle className="mr-2 h-4 w-4" />
-                Clear Active Project
-            </Button>
-        </CardContent>
-      ) : (
+      {!projectFile && (
         <Tabs defaultValue="upload" className="w-full">
             <TabsList className="grid w-full grid-cols-2">
-                <TabsTrigger value="upload">
+                <TabsTrigger value="upload" disabled={isCloning}>
                     <UploadCloud className="mr-2 h-4 w-4" />
                     File Upload
                 </TabsTrigger>
-                <TabsTrigger value="git">
+                <TabsTrigger value="git" disabled={isCloning}>
                     <GitBranch className="mr-2 h-4 w-4" />
                     Import from Git
                 </TabsTrigger>
@@ -289,7 +243,6 @@ export function ProjectUpload({ onProjectFileChange, projectFile }: ProjectUploa
                         accept=".zip,.zip-compressed"
                         onChange={(e) => handleFileChange(e, 'project')}
                         />
-                        {projectFile && <span className="text-sm text-muted-foreground truncate">{projectFile.name}</span>}
                     </div>
                     </div>
                 </CardContent>
@@ -306,7 +259,7 @@ export function ProjectUpload({ onProjectFileChange, projectFile }: ProjectUploa
                             disabled={isCloning}
                         />
                     </div>
-                    <Button onClick={handleGitImport} disabled={isCloning} className="w-full">
+                    <Button onClick={handleGitImport} disabled={isCloning || !gitUrl.trim()} className="w-full">
                         {isCloning ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <GitBranch className="mr-2 h-4 w-4" />}
                         {isCloning ? 'Importing...' : 'Import Project'}
                     </Button>

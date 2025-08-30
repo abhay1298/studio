@@ -19,9 +19,10 @@ export type TestSuite = {
 type ProjectExplorerProps = {
   suites: TestSuite[];
   isLoading: boolean;
+  projectLoaded: boolean;
 };
 
-export function ProjectExplorer({ suites, isLoading }: ProjectExplorerProps) {
+export function ProjectExplorer({ suites, isLoading, projectLoaded }: ProjectExplorerProps) {
   return (
     <Card>
       <CardHeader>
@@ -36,7 +37,7 @@ export function ProjectExplorer({ suites, isLoading }: ProjectExplorerProps) {
             <Loader2 className="h-6 w-6 animate-spin" />
             <p>Parsing project files...</p>
           </div>
-        ) : suites.length > 0 ? (
+        ) : projectLoaded && suites.length > 0 ? (
           <Accordion type="multiple" className="w-full">
             {suites.map((suite, index) => (
               <AccordionItem value={`item-${index}`} key={index}>
@@ -64,7 +65,7 @@ export function ProjectExplorer({ suites, isLoading }: ProjectExplorerProps) {
             <PackageSearch className="h-4 w-4" />
             <AlertTitle>No Project Loaded</AlertTitle>
             <AlertDescription>
-              Upload a project zip file to see its contents here.
+              Use the controls on the left to upload a project zip file or import from a Git repository to see its contents here.
             </AlertDescription>
           </Alert>
         )}
