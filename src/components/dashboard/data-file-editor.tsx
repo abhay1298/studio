@@ -8,7 +8,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
-import { Download, UploadCloud, TriangleAlert, Plus, Trash2, AlertCircle } from 'lucide-react';
+import { Download, UploadCloud, TriangleAlert, Plus, Trash2, AlertCircle, Wand2 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import {
   AlertDialog,
@@ -210,6 +210,48 @@ export function DataFileEditor() {
     validateData(newHeaders, newData);
   };
 
+  const handleCleanup = () => {
+    const originalRowCount = data.length;
+    const originalColCount = headers.length;
+
+    // Remove empty rows
+    const nonEmptyRows = data.filter(row => row.some(cell => String(cell).trim() !== ''));
+    
+    // Find empty columns
+    const emptyColIndexes: Set<number> = new Set();
+    if (nonEmptyRows.length > 0) {
+        for (let i = 0; i < headers.length; i++) {
+            const isColumnEmpty = nonEmptyRows.every(row => !row[i] || String(row[i]).trim() === '');
+            const isHeaderEmpty = !headers[i] || headers[i].trim() === '';
+            if (isColumnEmpty && isHeaderEmpty) {
+                emptyColIndexes.add(i);
+            }
+        }
+    }
+    
+    // Filter headers and data based on empty columns
+    const newHeaders = headers.filter((_, index) => !emptyColIndexes.has(index));
+    const newData = nonEmptyRows.map(row => row.filter((_, index) => !emptyColIndexes.has(index)));
+    
+    const rowsRemoved = originalRowCount - newData.length;
+    const colsRemoved = originalColCount - newHeaders.length;
+
+    if (rowsRemoved > 0 || colsRemoved > 0) {
+      setHeaders(newHeaders);
+      setData(newData);
+      validateData(newHeaders, newData);
+      toast({
+        title: 'Cleanup Complete',
+        description: `Removed ${rowsRemoved} empty row(s) and ${colsRemoved} empty column(s).`,
+      });
+    } else {
+      toast({
+        title: 'No Changes Needed',
+        description: 'No empty rows or columns were found to clean up.',
+      });
+    }
+  };
+
   if (error) {
     return (
         <Alert variant="destructive">
@@ -257,6 +299,10 @@ export function DataFileEditor() {
             <Button onClick={addColumn} variant="outline">
                 <Plus className="mr-2 h-4 w-4" />
                 Add Column
+            </Button>
+             <Button onClick={handleCleanup} variant="outline">
+                <Wand2 className="mr-2 h-4 w-4" />
+                Clean Up Data
             </Button>
             <div className="flex-grow"></div>
             <Button onClick={handleDownload} disabled={data.length === 0}>
