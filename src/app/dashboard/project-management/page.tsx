@@ -44,11 +44,23 @@ export default function ProjectManagementPage() {
 
     try {
       const zip = await JSZip.loadAsync(file);
-      const reqFile = zip.file('requirements.txt');
+      let reqFile: JSZip.JSZipObject | null = null;
+      
+      // Search for requirements.txt in the zip file recursively
+      zip.forEach((relativePath, zipEntry) => {
+        if (relativePath.endsWith('requirements.txt') && !zipEntry.dir) {
+          reqFile = zipEntry;
+        }
+      });
+
       if (reqFile) {
         const content = await reqFile.async('string');
         setRequirementsContent(content);
         sessionStorage.setItem('requirementsContent', content);
+         toast({
+            title: 'Found requirements.txt',
+            description: "Dependencies are ready to be scanned.",
+        });
       } else {
         setRequirementsContent(null);
         sessionStorage.removeItem('requirementsContent');
