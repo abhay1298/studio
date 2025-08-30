@@ -27,12 +27,12 @@ import {
   YAxis,
   CartesianGrid,
   Cell,
-  Tooltip,
 } from 'recharts';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
-import { BarChart3, TrendingUp, Check, X } from 'lucide-react';
+import { BarChart3, Check, X } from 'lucide-react';
 import Link from 'next/link';
 import { format, subMonths, startOfMonth } from 'date-fns';
+import { Skeleton } from '@/components/ui/skeleton';
 
 type RunHistory = {
   suite: string;
@@ -60,70 +60,123 @@ export default function ResultsPage() {
   const [passFailData, setPassFailData] = useState([]);
   const [monthlyData, setMonthlyData] = useState([]);
   const [executionTrendData, setExecutionTrendData] = useState([]);
+  const [isLoading, setIsLoading] = useState(true);
   const [hasData, setHasData] = useState(false);
 
   useEffect(() => {
-    if (typeof window !== 'undefined') {
-      const history = localStorage.getItem('robotMaestroRuns');
-      if (history) {
-        const runs: RunHistory[] = JSON.parse(history);
-        if (runs.length > 0) {
-            setHasData(true);
-            
-            // 1. Process for Pass/Fail Pie Chart
-            const passedCount = runs.filter(r => r.status === 'Success').length;
-            const failedCount = runs.filter(r => r.status === 'Failed').length;
-            setPassFailData([
-              { name: 'Passed', value: passedCount, fill: 'hsl(var(--chart-2))'},
-              { name: 'Failed', value: failedCount, fill: 'hsl(var(--destructive))' },
-            ]);
-
-            // 2. Process for Monthly Bar Chart
-            const sixMonthsAgo = startOfMonth(subMonths(new Date(), 5));
-            const monthlyCounts: { [key: string]: { passed: number, failed: number } } = {};
-
-            runs.forEach(run => {
-              const runDate = new Date(run.date);
-              if (runDate >= sixMonthsAgo) {
-                const month = format(runDate, 'MMM yyyy');
-                if (!monthlyCounts[month]) {
-                  monthlyCounts[month] = { passed: 0, failed: 0 };
+    const loadChartData = async () => {
+      setIsLoading(true);
+      if (typeof window !== 'undefined') {
+        const history = localStorage.getItem('robotMaestroRuns');
+        if (history) {
+          const runs: RunHistory[] = JSON.parse(history);
+          if (runs.length > 0) {
+              setHasData(true);
+              
+              // 1. Process for Pass/Fail Pie Chart
+              const passedCount = runs.filter(r => r.status === 'Success').length;
+              const failedCount = runs.filter(r => r.status === 'Failed').length;
+              setPassFailData([
+                { name: 'Passed', value: passedCount, fill: 'hsl(var(--chart-2))'},
+                { name: 'Failed', value: failedCount, fill: 'hsl(var(--destructive))' },
+              ]);
+  
+              // 2. Process for Monthly Bar Chart
+              const sixMonthsAgo = startOfMonth(subMonths(new Date(), 5));
+              const monthlyCounts: { [key: string]: { passed: number, failed: number } } = {};
+  
+              runs.forEach(run => {
+                const runDate = new Date(run.date);
+                if (runDate >= sixMonthsAgo) {
+                  const month = format(runDate, 'MMM yyyy');
+                  if (!monthlyCounts[month]) {
+                    monthlyCounts[month] = { passed: 0, failed: 0 };
+                  }
+                  if (run.status === 'Success') {
+                    monthlyCounts[month].passed++;
+                  } else {
+                    monthlyCounts[month].failed++;
+                  }
                 }
-                if (run.status === 'Success') {
-                  monthlyCounts[month].passed++;
-                } else {
-                  monthlyCounts[month].failed++;
-                }
+              });
+  
+              // Ensure all last 6 months are present
+              for (let i = 0; i < 6; i++) {
+                  const date = subMonths(new Date(), i);
+                  const monthKey = format(date, 'MMM yyyy');
+                  if (!monthlyCounts[monthKey]) {
+                      monthlyCounts[monthKey] = { passed: 0, failed: 0 };
+                  }
               }
-            });
-
-            // Ensure all last 6 months are present
-            for (let i = 0; i < 6; i++) {
-                const date = subMonths(new Date(), i);
-                const monthKey = format(date, 'MMM yyyy');
-                if (!monthlyCounts[monthKey]) {
-                    monthlyCounts[monthKey] = { passed: 0, failed: 0 };
-                }
-            }
-
-            const sortedMonthlyData = Object.entries(monthlyCounts)
-                .map(([month, counts]) => ({ month, ...counts }))
-                .sort((a, b) => new Date(a.month).getTime() - new Date(b.month).getTime());
-
-            setMonthlyData(sortedMonthlyData);
-
-
-            // 3. Process for Execution Trend Line Chart
-            setExecutionTrendData(
-                sortedMonthlyData.map(d => ({
-                    month: d.month,
-                    executions: d.passed + d.failed,
-                }))
-            );
+  
+              const sortedMonthlyData = Object.entries(monthlyCounts)
+                  .map(([month, counts]) => ({ month, ...counts }))
+                  .sort((a, b) => new Date(a.month).getTime() - new Date(b.month).getTime());
+  
+              setMonthlyData(sortedMonthlyData);
+  
+  
+              // 3. Process for Execution Trend Line Chart
+              setExecutionTrendData(
+                  sortedMonthlyData.map(d => ({
+                      month: d.month,
+                      executions: d.passed + d.failed,
+                  }))
+              );
+          } else {
+            setHasData(false);
+          }
         }
       }
-    }
+      setIsLoading(false);
+    };
+
+    loadChartData();
+    window.addEventListener('runsUpdated', loadChartData);
+    return () => {
+      window.removeEventListener('runsUpdated', loadChartData);
+    };
+
   }, []);
+
+  if (isLoading) {
+    return (
+      <div className="space-y-6">
+        <h1 className="font-headline text-3xl font-bold tracking-tight">
+          Results & Visualization
+        </h1>
+        <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+            <Card>
+                <CardHeader>
+                    <Skeleton className="h-6 w-3/4" />
+                    <Skeleton className="h-4 w-1/2" />
+                </CardHeader>
+                <CardContent className="flex justify-center items-center h-[250px]">
+                    <Skeleton className="h-[200px] w-[200px] rounded-full" />
+                </CardContent>
+            </Card>
+            <Card>
+                <CardHeader>
+                    <Skeleton className="h-6 w-3/4" />
+                    <Skeleton className="h-4 w-1/2" />
+                </CardHeader>
+                <CardContent className="h-[250px]">
+                    <Skeleton className="h-full w-full" />
+                </CardContent>
+            </Card>
+            <Card>
+                <CardHeader>
+                    <Skeleton className="h-6 w-3/4" />
+                    <Skeleton className="h-4 w-1/2" />
+                </CardHeader>
+                <CardContent className="h-[250px]">
+                    <Skeleton className="h-full w-full" />
+                </CardContent>
+            </Card>
+        </div>
+      </div>
+    )
+  }
 
   if (!hasData) {
      return (
@@ -169,7 +222,7 @@ export default function ResultsPage() {
                   strokeWidth={5}
                 >
                    {passFailData.map((entry, index) => (
-                    <Cell key={`cell-${index}`} fill={entry.fill} />
+                    <Cell key={`cell-${index}`} fill={PIE_COLORS[index % PIE_COLORS.length]} />
                   ))}
                 </Pie>
                 <ChartLegend
@@ -235,7 +288,7 @@ export default function ResultsPage() {
                         tickMargin={8}
                         allowDecimals={false}
                     />
-                    <Tooltip
+                    <ChartTooltip
                         content={
                             <ChartTooltipContent
                                 indicator="dot"

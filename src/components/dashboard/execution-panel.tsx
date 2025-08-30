@@ -134,13 +134,12 @@ export function ExecutionPanel() {
         body: JSON.stringify({ runType, config: runConfig }),
       });
 
-      const result = await response.json();
-      
       const endTime = Date.now();
       const duration = ((endTime - startTime) / 1000).toFixed(2) + 's';
       const suiteName = getSuiteNameForRun(runType);
 
       if (!response.ok) {
+        const result = await response.json();
         const errorMessage = result.message || 'The execution server returned an error.';
         addLog(`Execution failed: ${errorMessage}`);
         setStatus("failed");
@@ -153,6 +152,7 @@ export function ExecutionPanel() {
         return;
       }
       
+      const result = await response.json();
       addLog("Execution logs received from backend:");
       setLogs(prev => [...prev, result.logs]);
       setStatus(result.status === 'success' ? 'success' : 'failed');
@@ -184,12 +184,11 @@ export function ExecutionPanel() {
       const endTime = Date.now();
       const duration = ((endTime - startTime) / 1000).toFixed(2) + 's';
       const suiteName = getSuiteNameForRun(runType);
-      const errorMessage = error instanceof Error ? error.message : "An unknown error occurred.";
       
       let toastTitle = "Execution Error";
       let toastDescription = "An unexpected error occurred. Please try again.";
 
-      if (errorMessage.includes('fetch failed')) {
+      if (error instanceof TypeError && error.message === 'fetch failed') {
         toastTitle = "Connection Error";
         toastDescription = "Could not connect to the execution service. Please ensure the Python backend is running. See the 'Help & Docs' page for instructions.";
       }

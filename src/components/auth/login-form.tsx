@@ -16,7 +16,6 @@ import {
   FormMessage,
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
-import { Checkbox } from "@/components/ui/checkbox";
 import { Card, CardContent, CardFooter } from "@/components/ui/card";
 import { Eye, EyeOff, Loader2 } from "lucide-react";
 import { useState } from "react";
@@ -24,7 +23,6 @@ import { useState } from "react";
 const formSchema = z.object({
   username: z.string().min(1, "Username is required"),
   password: z.string().min(1, "Password is required"),
-  remember: z.boolean().default(true),
 });
 
 export function LoginForm() {
@@ -37,7 +35,6 @@ export function LoginForm() {
     defaultValues: {
       username: "admin",
       password: "password",
-      remember: true,
     },
   });
 
@@ -99,29 +96,11 @@ export function LoginForm() {
                         className="absolute right-1 top-1/2 h-7 w-7 -translate-y-1/2 text-muted-foreground"
                         onClick={() => setShowPassword(!showPassword)}
                       >
-                        {showPassword ? <EyeOff /> : <Eye />}
+                        {showPassword ? <EyeOff className="h-5 w-5"/> : <Eye className="h-5 w-5"/>}
                       </Button>
                     </div>
                   </FormControl>
                   <FormMessage />
-                </FormItem>
-              )}
-            />
-            <FormField
-              control={form.control}
-              name="remember"
-              render={({ field }) => (
-                <FormItem className="flex flex-row items-start space-x-3 space-y-0">
-                  <FormControl>
-                    <Checkbox
-                      checked={field.value}
-                      onCheckedChange={field.onChange}
-                      disabled={isSubmitting}
-                    />
-                  </FormControl>
-                  <div className="space-y-1 leading-none">
-                    <FormLabel>Remember me</FormLabel>
-                  </div>
                 </FormItem>
               )}
             />

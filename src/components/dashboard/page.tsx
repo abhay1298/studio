@@ -38,44 +38,47 @@ export default function DashboardPageContent() {
   const [isLoading, setIsLoading] = useState(true);
   const [stats, setStats] = useState({
     totalRuns: 0,
-    passRate: '0.0%',
+    passRate: 'N/A',
     avgDuration: '--',
   });
 
-  useEffect(() => {
-    const loadRunHistory = async () => {
-      setIsLoading(true);
-      // Ensure this runs only on the client
-      if (typeof window !== 'undefined') {
-        try {
-          // Simulate a small delay to show loading state
-          await new Promise(resolve => setTimeout(resolve, 200));
+  const loadRunHistory = () => {
+    setIsLoading(true);
+    // Ensure this runs only on the client
+    if (typeof window !== 'undefined') {
+      try {
+        const history = localStorage.getItem('robotMaestroRuns');
+        if (history) {
+          const runs = JSON.parse(history);
+          const latestRuns = runs.slice(-5).reverse();
+          setRecentRuns(latestRuns);
+          
+          const totalRuns = runs.length;
+          const passedRuns = runs.filter((r: any) => r.status === 'Success').length;
+          const passRate = totalRuns > 0 ? ((passedRuns / totalRuns) * 100).toFixed(1) + '%' : 'N/A';
 
-          const history = localStorage.getItem('robotMaestroRuns');
-          if (history) {
-            const runs = JSON.parse(history);
-            const latestRuns = runs.slice(-5).reverse();
-            setRecentRuns(latestRuns);
-            
-            const totalRuns = runs.length;
-            const passedRuns = runs.filter((r: any) => r.status === 'Success').length;
-            const passRate = totalRuns > 0 ? ((passedRuns / totalRuns) * 100).toFixed(1) + '%' : '0.0%';
+          const totalDuration = runs.reduce((acc: number, r: any) => {
+              const durationValue = r.duration ? parseFloat(r.duration) : 0;
+              return acc + (isNaN(durationValue) ? 0 : durationValue);
+          }, 0);
+          const avgDuration = totalRuns > 0 ? (totalDuration / totalRuns).toFixed(2) + 's' : '--';
 
-            const totalDuration = runs.reduce((acc: number, r: any) => {
-                const durationValue = r.duration ? parseFloat(r.duration) : 0;
-                return acc + (isNaN(durationValue) ? 0 : durationValue);
-            }, 0);
-            const avgDuration = totalRuns > 0 ? (totalDuration / totalRuns).toFixed(2) + 's' : '--';
-
-            setStats({ totalRuns, passRate, avgDuration });
-          }
-        } catch (e) {
-          console.error("Failed to parse run history from localStorage", e);
+          setStats({ totalRuns, passRate, avgDuration });
+        } else {
+          // No history, set to default empty state
+           setStats({ totalRuns: 0, passRate: 'N/A', avgDuration: '--' });
+           setRecentRuns([]);
         }
+      } catch (e) {
+        console.error("Failed to parse run history from localStorage", e);
+        setStats({ totalRuns: 0, passRate: 'N/A', avgDuration: '--' });
+        setRecentRuns([]);
       }
-      setIsLoading(false);
-    };
+    }
+    setIsLoading(false);
+  };
 
+  useEffect(() => {
     loadRunHistory();
     window.addEventListener('runsUpdated', loadRunHistory);
     
@@ -103,7 +106,7 @@ export default function DashboardPageContent() {
             <CardHeader className="pb-2">
               <CardDescription>Pass Rate</CardDescription>
               <CardTitle className="font-headline text-4xl">{isLoading ? <Skeleton className="w-24 h-9"/> : stats.passRate}</CardTitle>
-            </CardHeader>
+            </Header>
             <CardContent>
               <div className="text-xs text-muted-foreground">
                 Based on all-time runs
@@ -178,13 +181,12 @@ export default function DashboardPageContent() {
                         </TableCell>
                         <TableCell>
                         <Badge
-                            className={
-                            run.status === 'Success'
-                                ? 'border-transparent bg-green-500/20 text-green-700 dark:bg-green-500/10 dark:text-green-400'
-                                : run.status === 'Failed'
-                                ? 'border-transparent bg-destructive text-destructive-foreground'
-                                : 'border-transparent bg-secondary text-secondary-foreground'
-                            }
+                             variant={run.status === 'Success' ? 'default' : 'destructive'}
+                             className={
+                                run.status === 'Success'
+                                 ? 'border-transparent bg-green-500/20 text-green-700 dark:bg-green-500/10 dark:text-green-400'
+                                 : ''
+                             }
                         >
                             {run.status}
                         </Badge>

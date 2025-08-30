@@ -40,38 +40,38 @@ export default function ReportsPage() {
   const [reports, setReports] = useState<Report[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
-  useEffect(() => {
-    const loadReports = async () => {
-      setIsLoading(true);
-      // Ensure this runs only on the client
-      if (typeof window !== 'undefined') {
-        try {
-          const history = localStorage.getItem('robotMaestroRuns');
-          if (history) {
-            const runs = JSON.parse(history);
-            const formattedReports = runs.map((run: any, index: number) => ({
-              id: `RUN-${new Date(run.date).getTime()}-${index}`,
-              suite: run.suite,
-              status: run.status,
-              timestamp: new Date(run.date).toLocaleString(),
-              duration: run.duration,
-              pass: run.pass,
-              fail: run.fail,
-            })).reverse(); // Show newest first
-            setReports(formattedReports);
-          }
-        } catch (e) {
-          console.error("Failed to parse run history from localStorage", e);
-          toast({
-            variant: 'destructive',
-            title: 'Could not load reports',
-            description: 'There was an issue reading your execution history.'
-          });
+  const loadReports = async () => {
+    setIsLoading(true);
+    // Ensure this runs only on the client
+    if (typeof window !== 'undefined') {
+      try {
+        const history = localStorage.getItem('robotMaestroRuns');
+        if (history) {
+          const runs = JSON.parse(history);
+          const formattedReports = runs.map((run: any, index: number) => ({
+            id: `RUN-${new Date(run.date).getTime()}-${index}`,
+            suite: run.suite,
+            status: run.status,
+            timestamp: new Date(run.date).toLocaleString(),
+            duration: run.duration,
+            pass: run.pass,
+            fail: run.fail,
+          })).reverse(); // Show newest first
+          setReports(formattedReports);
         }
+      } catch (e) {
+        console.error("Failed to parse run history from localStorage", e);
+        toast({
+          variant: 'destructive',
+          title: 'Could not load reports',
+          description: 'There was an issue reading your execution history.'
+        });
       }
-      setIsLoading(false);
-    };
-    
+    }
+    setIsLoading(false);
+  };
+
+  useEffect(() => {
     loadReports();
 
     window.addEventListener('runsUpdated', loadReports);

@@ -4,27 +4,14 @@
 import { useState, useEffect } from "react";
 import {
   Bell,
-  Home,
-  Image as ImageIcon,
-  LineChart,
-  Package2,
-  PlayCircle,
   Settings,
   Users,
   Bot,
-  CheckCircle2,
   Sparkles,
   Inbox,
+  ImageIcon,
 } from "lucide-react";
 
-import { Badge } from "@/components/ui/badge";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -33,8 +20,6 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Input } from "@/components/ui/input";
-import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { SidebarTrigger } from "../ui/sidebar";
 import { ThemeToggle } from "../theme-toggle";
 import { Button } from "../ui/button";
@@ -58,13 +43,6 @@ const initialNotifications: Notification[] = [
         iconColor: "text-primary",
         title: "Welcome to Robot Maestro!",
         description: "Explore the dashboard to get started.",
-    },
-    {
-        id: 2,
-        icon: CheckCircle2,
-        iconColor: "text-green-600",
-        title: "Test Run Success",
-        description: "'Login tests' suite completed in 45s.",
     },
     {
         id: 3,
@@ -126,7 +104,7 @@ export function DashboardHeader() {
                 <Button variant="ghost" size="icon" className="relative">
                     <Bell className="h-5 w-5" />
                     {notifications.length > 0 && (
-                        <span className="absolute top-1 right-1.5 h-2 w-2 rounded-full bg-accent" />
+                        <span className="absolute top-1 right-1.5 h-2 w-2 rounded-full bg-accent animate-bounce" />
                     )}
                     <span className="sr-only">Toggle notifications</span>
                 </Button>
