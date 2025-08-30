@@ -1,0 +1,13 @@
+diff --git a/node_modules/@genkit-ai/googleai/lib/googleai.js b/node_modules/@genkit-ai/googleai/lib/googleai.js
+index 4557574..36e7a2b 100644
+--- a/node_modules/@genkit-ai/googleai/lib/googleai.js
++++ b/node_modules/@genkit-ai/googleai/lib/googleai.js
+@@ -137,7 +137,7 @@
+     });
+     if (apiVersions.includes('v1')) {
+         Object.keys(supported_generation_models_1.SUPPORTED_GEMINI_MODELS).forEach((name) => (0, model_1.defineGoogleAIModel)({
+-            ai,
++            ...options,
+             name,
+             apiKey: options?.apiKey,
+         }));
