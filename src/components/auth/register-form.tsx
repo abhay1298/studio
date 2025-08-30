@@ -53,8 +53,9 @@ export function RegisterForm() {
   async function onSubmit(values: z.infer<typeof formSchema>) {
     try {
       // In a real application, you would first save the user to a database.
-      // Then, you would call the flow to send the welcome email.
-      const result = await sendWelcomeEmail({ name: values.name, email: values.email });
+      // Then, trigger the welcome email flow without waiting for it to complete
+      // to provide immediate feedback to the user.
+      sendWelcomeEmail({ name: values.name, email: values.email });
 
       toast({
         title: "Registration Successful",
