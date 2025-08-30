@@ -33,12 +33,16 @@ import { BarChart3, Check, X } from 'lucide-react';
 import Link from 'next/link';
 import { format, subMonths, startOfMonth } from 'date-fns';
 import { Skeleton } from '@/components/ui/skeleton';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
 type RunHistory = {
+  id: string;
   suite: string;
-  status: 'Success' | 'Failed';
+  status: 'Success' | 'Failed' | 'Stopped';
   duration: string;
   date: string;
+  pass: number;
+  fail: number;
 };
 
 const PIE_COLORS = ['hsl(var(--chart-2))', 'hsl(var(--destructive))'];
@@ -57,87 +61,103 @@ const chartConfig = {
 };
 
 export default function ResultsPage() {
+  const [allRuns, setAllRuns] = useState<RunHistory[]>([]);
+  const [selectedRunId, setSelectedRunId] = useState<string>('overall');
+  
   const [passFailData, setPassFailData] = useState([]);
   const [monthlyData, setMonthlyData] = useState([]);
   const [executionTrendData, setExecutionTrendData] = useState([]);
+  
   const [isLoading, setIsLoading] = useState(true);
   const [hasData, setHasData] = useState(false);
 
+  // Load all data from localStorage initially
   useEffect(() => {
-    const loadChartData = async () => {
+    const loadInitialData = () => {
       setIsLoading(true);
-      if (typeof window !== 'undefined') {
+       if (typeof window !== 'undefined') {
         const history = localStorage.getItem('robotMaestroRuns');
         if (history) {
-          const runs: RunHistory[] = JSON.parse(history);
-          if (runs.length > 0) {
+            const runs: RunHistory[] = JSON.parse(history);
+            if (runs.length > 0) {
+              setAllRuns(runs.map(run => ({
+                id: run.id || `RUN-${new Date(run.date).getTime()}`,
+                ...run
+              })).reverse());
               setHasData(true);
-              
-              // 1. Process for Pass/Fail Pie Chart
-              const passedCount = runs.filter(r => r.status === 'Success').length;
-              const failedCount = runs.filter(r => r.status === 'Failed').length;
-              setPassFailData([
-                { name: 'Passed', value: passedCount, fill: 'hsl(var(--chart-2))'},
-                { name: 'Failed', value: failedCount, fill: 'hsl(var(--destructive))' },
-              ]);
-  
-              // 2. Process for Monthly Bar Chart
-              const sixMonthsAgo = startOfMonth(subMonths(new Date(), 5));
-              const monthlyCounts: { [key: string]: { passed: number, failed: number } } = {};
-  
-              runs.forEach(run => {
-                const runDate = new Date(run.date);
-                if (runDate >= sixMonthsAgo) {
-                  const month = format(runDate, 'MMM yyyy');
-                  if (!monthlyCounts[month]) {
-                    monthlyCounts[month] = { passed: 0, failed: 0 };
-                  }
-                  if (run.status === 'Success') {
-                    monthlyCounts[month].passed++;
-                  } else {
-                    monthlyCounts[month].failed++;
-                  }
-                }
-              });
-  
-              // Ensure all last 6 months are present
-              for (let i = 0; i < 6; i++) {
-                  const date = subMonths(new Date(), i);
-                  const monthKey = format(date, 'MMM yyyy');
-                  if (!monthlyCounts[monthKey]) {
-                      monthlyCounts[monthKey] = { passed: 0, failed: 0 };
-                  }
-              }
-  
-              const sortedMonthlyData = Object.entries(monthlyCounts)
-                  .map(([month, counts]) => ({ month, ...counts }))
-                  .sort((a, b) => new Date(a.month).getTime() - new Date(b.month).getTime());
-  
-              setMonthlyData(sortedMonthlyData);
-  
-  
-              // 3. Process for Execution Trend Line Chart
-              setExecutionTrendData(
-                  sortedMonthlyData.map(d => ({
-                      month: d.month,
-                      executions: d.passed + d.failed,
-                  }))
-              );
-          } else {
-            setHasData(false);
-          }
+            } else {
+              setHasData(false);
+            }
         }
-      }
-      setIsLoading(false);
+       }
+       setIsLoading(false);
     };
 
-    loadChartData();
-    window.addEventListener('runsUpdated', loadChartData);
+    loadInitialData();
+    window.addEventListener('runsUpdated', loadInitialData);
     return () => {
-      window.removeEventListener('runsUpdated', loadChartData);
+      window.removeEventListener('runsUpdated', loadInitialData);
     };
-
   }, []);
+
+  // Process data whenever the selected run or the base data changes
+  useEffect(() => {
+    if (!hasData) return;
+
+    const runsToProcess = selectedRunId === 'overall' 
+        ? allRuns 
+        : allRuns.filter(r => r.id === selectedRunId);
+
+    if (runsToProcess.length === 0) return;
+
+    // 1. Process for Pass/Fail Pie Chart
+    const passedCount = runsToProcess.reduce((acc, run) => acc + run.pass, 0);
+    const failedCount = runsToProcess.reduce((acc, run) => acc + run.fail, 0);
+    setPassFailData([
+      { name: 'Passed', value: passedCount, fill: 'hsl(var(--chart-2))'},
+      { name: 'Failed', value: failedCount, fill: 'hsl(var(--destructive))' },
+    ]);
+
+    // 2. Process for Monthly Bar Chart
+    const sixMonthsAgo = startOfMonth(subMonths(new Date(), 5));
+    const monthlyCounts: { [key: string]: { passed: number, failed: number } } = {};
+
+    runsToProcess.forEach(run => {
+      const runDate = new Date(run.date);
+      if (runDate >= sixMonthsAgo) {
+        const month = format(runDate, 'MMM yyyy');
+        if (!monthlyCounts[month]) {
+          monthlyCounts[month] = { passed: 0, failed: 0 };
+        }
+        monthlyCounts[month].passed += run.pass;
+        monthlyCounts[month].failed += run.fail;
+      }
+    });
+
+    // Ensure all last 6 months are present
+    for (let i = 0; i < 6; i++) {
+        const date = subMonths(new Date(), i);
+        const monthKey = format(date, 'MMM yyyy');
+        if (!monthlyCounts[monthKey]) {
+            monthlyCounts[monthKey] = { passed: 0, failed: 0 };
+        }
+    }
+
+    const sortedMonthlyData = Object.entries(monthlyCounts)
+        .map(([month, counts]) => ({ month, ...counts }))
+        .sort((a, b) => new Date(a.month).getTime() - new Date(b.month).getTime());
+
+    setMonthlyData(sortedMonthlyData);
+
+    // 3. Process for Execution Trend Line Chart
+    setExecutionTrendData(
+        sortedMonthlyData.map(d => ({
+            month: d.month,
+            executions: d.passed + d.failed,
+        }))
+    );
+  }, [selectedRunId, allRuns, hasData]);
+
 
   if (isLoading) {
     return (
@@ -197,15 +217,32 @@ export default function ResultsPage() {
 
   return (
     <div className="space-y-6">
-      <h1 className="font-headline text-3xl font-bold tracking-tight">
-        Results & Visualization
-      </h1>
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+            <h1 className="font-headline text-3xl font-bold tracking-tight">
+                Results & Visualization
+            </h1>
+            <div className="w-full sm:w-auto min-w-[300px]">
+                <Select value={selectedRunId} onValueChange={setSelectedRunId}>
+                    <SelectTrigger>
+                        <SelectValue placeholder="Select a run to visualize..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                        <SelectItem value="overall">Overall Results</SelectItem>
+                        {allRuns.map(run => (
+                            <SelectItem key={run.id} value={run.id} className="max-w-[400px]">
+                                <span className="truncate">{`[${new Date(run.date).toLocaleDateString()}] ${run.suite}`}</span>
+                            </SelectItem>
+                        ))}
+                    </SelectContent>
+                </Select>
+            </div>
+        </div>
       
       <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
         <Card>
           <CardHeader>
-            <CardTitle className="font-headline">Overall Pass/Fail Rate</CardTitle>
-            <CardDescription>All-time execution status distribution</CardDescription>
+            <CardTitle className="font-headline">Pass/Fail Rate</CardTitle>
+            <CardDescription>{selectedRunId === 'overall' ? 'All-time execution status' : 'Status for the selected execution'}</CardDescription>
           </CardHeader>
           <CardContent>
             <ChartContainer config={chartConfig} className="mx-auto aspect-square h-[250px]">
@@ -236,7 +273,7 @@ export default function ResultsPage() {
         <Card>
           <CardHeader>
             <CardTitle className="font-headline">Monthly Execution Trends</CardTitle>
-            <CardDescription>Pass vs. Fail over the last 6 months</CardDescription>
+            <CardDescription>{selectedRunId === 'overall' ? 'Pass vs. Fail over the last 6 months' : 'Execution results for the selected month'}</CardDescription>
           </CardHeader>
           <CardContent>
              <ChartContainer config={chartConfig} className="h-[250px] w-full">
@@ -253,8 +290,8 @@ export default function ResultsPage() {
                     content={<ChartTooltipContent indicator="dot" />}
                  />
                  <ChartLegend content={<ChartLegendContent />} />
-                 <Bar dataKey="passed" fill="var(--color-passed)" radius={4} />
-                 <Bar dataKey="failed" fill="var(--color-failed)" radius={4} />
+                 <Bar dataKey="passed" fill="var(--color-passed)" radius={4} stackId="a"/>
+                 <Bar dataKey="failed" fill="var(--color-failed)" radius={4} stackId="a"/>
                </BarChartComponent>
              </ChartContainer>
           </CardContent>
@@ -263,7 +300,7 @@ export default function ResultsPage() {
         <Card>
           <CardHeader>
             <CardTitle className="font-headline">Execution Volume Trend</CardTitle>
-            <CardDescription>Total tests run per month</CardDescription>
+            <CardDescription>{selectedRunId === 'overall' ? 'Total tests run per month' : 'Tests run in the selected month'}</CardDescription>
           </CardHeader>
           <CardContent>
               <ChartContainer config={{
