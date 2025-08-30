@@ -15,7 +15,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Button, buttonVariants } from '@/components/ui/button';
 import { useToast } from '@/hooks/use-toast';
-import { UploadCloud, FileCheck2, FileWarning, FileX2, Pencil, GitClone, Loader2 } from 'lucide-react';
+import { UploadCloud, FileCheck2, FileWarning, FileX2, Pencil, GitBranch, Loader2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../ui/tabs';
 
@@ -139,7 +139,7 @@ export function ProjectUpload({ onProjectFileChange }: ProjectUploadProps) {
         toast({
             title: 'Repository Cloned',
             description: `Successfully imported project from '${repoName}'. It is now the active project.`,
-            action: <GitClone className="text-green-500" />,
+            action: <GitBranch className="text-green-500" />,
         });
         // To make other components aware, you could set a dummy project file state
         onProjectFileChange(new File([], `${repoName}.zip`, { type: 'application/zip'}));
@@ -163,7 +163,7 @@ export function ProjectUpload({ onProjectFileChange }: ProjectUploadProps) {
                 File Upload
             </TabsTrigger>
             <TabsTrigger value="git">
-                <GitClone className="mr-2 h-4 w-4" />
+                <GitBranch className="mr-2 h-4 w-4" />
                 Import from Git
             </TabsTrigger>
         </TabsList>
@@ -224,7 +224,7 @@ export function ProjectUpload({ onProjectFileChange }: ProjectUploadProps) {
                     />
                 </div>
                  <Button onClick={handleGitImport} disabled={isCloning} className="w-full">
-                    {isCloning ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <GitClone className="mr-2 h-4 w-4" />}
+                    {isCloning ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <GitBranch className="mr-2 h-4 w-4" />}
                     {isCloning ? 'Importing...' : 'Import Project'}
                 </Button>
             </CardContent>
