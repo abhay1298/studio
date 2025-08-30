@@ -142,25 +142,37 @@ export function ExecutionProvider({ children }: { children: ReactNode }) {
   });
 
   const [projectFile, setProjectFile] = useState<File | null>(() => {
-    const name = getInitialState<string | null>('projectFileName', null);
+    if (typeof window === 'undefined') return null;
+    const name = sessionStorage.getItem('projectFileName');
     return name ? new File([], name) : null;
   });
   const [dataFile, setDataFile] = useState<File | null>(() => {
-    const name = getInitialState<string | null>('dataFileName', null);
+    if (typeof window === 'undefined') return null;
+    const name = sessionStorage.getItem('dataFileName');
     return name ? new File([], name) : null;
   });
-  const [requirementsContent, setRequirementsContent] = useState<string | null>(() =>
-    getInitialState<string | null>('requirementsContent', null)
-  );
+
+  const [requirementsContent, setRequirementsContent] = useState<string | null>(() => {
+    if (typeof window === 'undefined') return null;
+    return sessionStorage.getItem('requirementsContent');
+  });
 
   const [testSuites, setTestSuites] = useState<TestSuite[]>([]);
   const [isLoadingSuites, setIsLoadingSuites] = useState(false);
   const [suiteLoadError, setSuiteLoadError] = useState<string | null>(null);
 
-  const [editedData, setEditedData] = useState<TableData>([]);
-  const [editedHeaders, setEditedHeaders] = useState<string[]>([]);
+  const [editedData, setEditedData] = useState<TableData>(getInitialState('editedData', []));
+  const [editedHeaders, setEditedHeaders] = useState<string[]>(getInitialState('editedHeaders', []));
 
   const { toast } = useToast();
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      sessionStorage.setItem('editedData', JSON.stringify(editedData));
+      sessionStorage.setItem('editedHeaders', JSON.stringify(editedHeaders));
+    }
+  }, [editedData, editedHeaders]);
+
 
   const addLog = useCallback((message: string) => {
     const timestamp = new Date().toLocaleTimeString();
@@ -361,7 +373,7 @@ export function ExecutionProvider({ children }: { children: ReactNode }) {
                 skipEmptyLines: true,
                 complete: (result) => {
                     const parsedHeaders = result.meta.fields || [];
-                    const parsedData = result.data.map((row: any) => Object.values(row)) as TableData;
+                    const parsedData = result.data.map((row: any) => parsedHeaders.map(h => row[h])) as TableData;
                     setEditedHeaders(parsedHeaders);
                     setEditedData(parsedData);
                 }
@@ -403,6 +415,8 @@ export function ExecutionProvider({ children }: { children: ReactNode }) {
     if (typeof window !== 'undefined') {
         sessionStorage.removeItem('dataFileName');
         sessionStorage.removeItem('dataFileContent');
+        sessionStorage.removeItem('editedData');
+        sessionStorage.removeItem('editedHeaders');
     }
     toast({ title: 'Data File Cleared' });
   }, [toast]);
@@ -500,11 +514,12 @@ export function ExecutionProvider({ children }: { children: ReactNode }) {
       }
 
     } catch (error) {
-      console.error("Error reading zip file:", error);
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      console.error("Error reading zip file:", errorMessage);
       toast({
         variant: 'destructive',
         title: 'Error processing project',
-        description: 'Could not read the contents of the uploaded zip file.',
+        description: 'Could not read the contents of the uploaded zip file. It may be corrupt or not a valid zip file.',
       });
       clearProjectFile();
     }
