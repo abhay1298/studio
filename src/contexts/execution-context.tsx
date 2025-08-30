@@ -1,5 +1,4 @@
 
-
 "use client";
 
 import { createContext, useContext, useState, useCallback, ReactNode, useEffect, Dispatch, SetStateAction } from 'react';
@@ -63,12 +62,23 @@ const fileToDataURL = (file: File): Promise<string> => {
     });
 };
 
-const dataURLtoBlob = async (dataurl: string) => {
-    const res = await fetch(dataurl);
-    if (!res.ok) {
-        throw new Error(`Failed to fetch data URL: ${res.status} ${res.statusText}`);
+const dataURLtoBlob = (dataurl: string): Blob => {
+    const arr = dataurl.split(',');
+    if (arr.length < 2) {
+        throw new Error('Invalid data URL');
     }
-    return res.blob();
+    const mimeMatch = arr[0].match(/:(.*?);/);
+    if (!mimeMatch) {
+        throw new Error('Could not parse MIME type from data URL');
+    }
+    const mime = mimeMatch[1];
+    const bstr = atob(arr[1]);
+    let n = bstr.length;
+    const u8arr = new Uint8Array(n);
+    while(n--){
+        u8arr[n] = bstr.charCodeAt(n);
+    }
+    return new Blob([u8arr], {type:mime});
 };
 
 
@@ -81,7 +91,7 @@ const validateOrchestratorData = async (): Promise<string | null> => {
     }
 
     try {
-        const blob = await dataURLtoBlob(fileDataUrl);
+        const blob = dataURLtoBlob(fileDataUrl);
         let headers: string[] = [];
         let data: any[] = [];
 
@@ -157,7 +167,9 @@ export function ExecutionProvider({ children }: { children: ReactNode }) {
   });
 
   const [projectFileName, setProjectFileName] = useState<string | null>(() => getInitialState('projectFileName', null));
+  const [projectFileContent, setProjectFileContent] = useState<string | null>(() => getInitialState('projectFileContent', null));
   const [dataFileName, setDataFileName] = useState<string | null>(() => getInitialState('dataFileName', null));
+  const [dataFileContent, setDataFileContent] = useState<string | null>(() => getInitialState('dataFileContent', null));
 
   const [requirementsContent, setRequirementsContent] = useState<string | null>(() => getInitialState('requirementsContent', null));
 
@@ -176,6 +188,13 @@ export function ExecutionProvider({ children }: { children: ReactNode }) {
       else sessionStorage.removeItem('projectFileName');
     }
   }, [projectFileName]);
+  
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      if (projectFileContent) sessionStorage.setItem('projectFileContent', projectFileContent);
+      else sessionStorage.removeItem('projectFileContent');
+    }
+  }, [projectFileContent]);
 
   useEffect(() => {
     if (typeof window !== 'undefined') {
@@ -183,6 +202,14 @@ export function ExecutionProvider({ children }: { children: ReactNode }) {
       else sessionStorage.removeItem('dataFileName');
     }
   }, [dataFileName]);
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      if (dataFileContent) sessionStorage.setItem('dataFileContent', dataFileContent);
+      else sessionStorage.removeItem('dataFileContent');
+    }
+  }, [dataFileContent]);
+
 
   useEffect(() => {
     if (typeof window !== 'undefined') {
@@ -390,60 +417,52 @@ export function ExecutionProvider({ children }: { children: ReactNode }) {
     }
   }, [addLog, toast]);
 
-  const parseAndSetDataFile = useCallback(async (file: File) => {
+  const parseAndSetDataFile = useCallback(async (dataFileContent: string, dataFileName: string) => {
     try {
-        if (file.name.endsWith('.csv')) {
-            const text = await file.text();
-            Papa.parse(text, {
-                header: true,
-                skipEmptyLines: true,
-                complete: (result) => {
-                    const parsedHeaders = result.meta.fields || [];
-                    const parsedData = result.data.map((row: any) => parsedHeaders.map(h => row[h])) as TableData;
-                    setEditedHeaders(parsedHeaders);
-                    setEditedData(parsedData);
-                }
-            });
-        } else if (file.name.endsWith('.xlsx')) {
-            const arrayBuffer = await file.arrayBuffer();
-            const wb = XLSX.read(arrayBuffer, { type: 'array' });
-            const wsname = wb.SheetNames[0];
-            const ws = wb.Sheets[wsname];
-            const jsonData: any[][] = XLSX.utils.sheet_to_json(ws, { header: 1 });
-            if (jsonData.length > 0) {
-                const parsedHeaders = jsonData[0].map(String);
-                const parsedData = jsonData.slice(1);
-                setEditedHeaders(parsedHeaders);
-                setEditedData(parsedData);
-            }
+      const blob = dataURLtoBlob(dataFileContent);
+      if (dataFileName.endsWith('.csv')) {
+        const text = await blob.text();
+        Papa.parse(text, {
+          header: true,
+          skipEmptyLines: true,
+          complete: (result) => {
+            const parsedHeaders = result.meta.fields || [];
+            const parsedData = result.data.map((row: any) => parsedHeaders.map(h => row[h])) as TableData;
+            setEditedHeaders(parsedHeaders);
+            setEditedData(parsedData);
+          }
+        });
+      } else if (dataFileName.endsWith('.xlsx')) {
+        const arrayBuffer = await blob.arrayBuffer();
+        const wb = XLSX.read(arrayBuffer, { type: 'array' });
+        const wsname = wb.SheetNames[0];
+        const ws = wb.Sheets[wsname];
+        const jsonData: any[][] = XLSX.utils.sheet_to_json(ws, { header: 1 });
+        if (jsonData.length > 0) {
+          const parsedHeaders = jsonData[0].map(String);
+          const parsedData = jsonData.slice(1);
+          setEditedHeaders(parsedHeaders);
+          setEditedData(parsedData);
         }
+      }
     } catch (e) {
-        console.error("Error parsing data file", e);
-        toast({ variant: 'destructive', title: "Error reading data file" });
+      console.error("Error parsing data file", e);
+      toast({ variant: 'destructive', title: "Error reading data file" });
     }
   }, [toast]);
 
   const clearProjectFile = useCallback(() => {
     setProjectFileName(null);
+    setProjectFileContent(null);
     setRequirementsContent(null);
-    if (typeof window !== 'undefined') {
-        sessionStorage.removeItem('projectFileName');
-        sessionStorage.removeItem('projectFileContent');
-        sessionStorage.removeItem('requirementsContent');
-    }
     toast({ title: 'Project Cleared' });
   }, [toast]);
 
   const clearDataFile = useCallback(() => {
     setDataFileName(null);
+    setDataFileContent(null);
     setEditedData([]);
     setEditedHeaders([]);
-    if (typeof window !== 'undefined') {
-        sessionStorage.removeItem('dataFileName');
-        sessionStorage.removeItem('dataFileContent');
-        sessionStorage.removeItem('editedData');
-        sessionStorage.removeItem('editedHeaders');
-    }
     toast({ title: 'Data File Cleared' });
   }, [toast]);
 
@@ -455,12 +474,10 @@ export function ExecutionProvider({ children }: { children: ReactNode }) {
     
     try {
       const dataUrl = await fileToDataURL(file);
-      if (typeof window !== 'undefined') {
-        sessionStorage.setItem('dataFileName', file.name);
-        sessionStorage.setItem('dataFileContent', dataUrl);
-      }
+      setDataFileContent(dataUrl);
       setDataFileName(file.name);
-      await parseAndSetDataFile(file);
+      await parseAndSetDataFile(dataUrl, file.name);
+
       toast({
         title: 'Data File Uploaded',
         description: file.name,
@@ -484,9 +501,7 @@ export function ExecutionProvider({ children }: { children: ReactNode }) {
     
     try {
       const dataUrl = await fileToDataURL(file);
-      if (typeof window !== 'undefined') {
-          sessionStorage.setItem('projectFileContent', dataUrl);
-      }
+      setProjectFileContent(dataUrl);
       setProjectFileName(file.name);
 
       toast({
@@ -495,7 +510,8 @@ export function ExecutionProvider({ children }: { children: ReactNode }) {
         action: <FileCheck2 className="text-green-500" />,
       });
 
-      const zip = await JSZip.loadAsync(await dataURLtoBlob(dataUrl));
+      const blob = dataURLtoBlob(dataUrl);
+      const zip = await JSZip.loadAsync(blob);
       
       let reqFileEntry: JSZip.JSZipObject | null = null;
       zip.forEach((relativePath, zipEntry) => {
@@ -605,5 +621,3 @@ export function useExecutionContext() {
   }
   return context;
 }
-
-    
