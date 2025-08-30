@@ -63,6 +63,7 @@ const dataURLtoBlob = (dataurl: string) => {
 
 
 const validateOrchestratorData = async (): Promise<string | null> => {
+    if (typeof window === 'undefined') return null;
     const fileDataUrl = sessionStorage.getItem('dataFileContent');
     const fileName = sessionStorage.getItem('dataFileName');
     if (!fileDataUrl || !fileName) {
@@ -114,6 +115,21 @@ const validateOrchestratorData = async (): Promise<string | null> => {
     }
 };
 
+const getInitialState = <T,>(key: string, defaultValue: T, transform?: (value: string) => any): T => {
+    if (typeof window === 'undefined') {
+        return defaultValue;
+    }
+    try {
+        const item = window.sessionStorage.getItem(key);
+        if (!item) return defaultValue;
+        return transform ? transform(item) : JSON.parse(item);
+    } catch (error) {
+        console.warn(`Error reading sessionStorage key "${key}":`, error);
+        return defaultValue;
+    }
+};
+
+
 export function ExecutionProvider({ children }: { children: ReactNode }) {
   const [status, setStatus] = useState<ExecutionStatus>("idle");
   const [logs, setLogs] = useState<string[]>([]);
@@ -125,9 +141,17 @@ export function ExecutionProvider({ children }: { children: ReactNode }) {
     testcase: '',
   });
 
-  const [projectFile, setProjectFile] = useState<File | null>(null);
-  const [dataFile, setDataFile] = useState<File | null>(null);
-  const [requirementsContent, setRequirementsContent] = useState<string | null>(null);
+  const [projectFile, setProjectFile] = useState<File | null>(() => {
+    const name = getInitialState<string | null>('projectFileName', null);
+    return name ? new File([], name) : null;
+  });
+  const [dataFile, setDataFile] = useState<File | null>(() => {
+    const name = getInitialState<string | null>('dataFileName', null);
+    return name ? new File([], name) : null;
+  });
+  const [requirementsContent, setRequirementsContent] = useState<string | null>(() =>
+    getInitialState<string | null>('requirementsContent', null)
+  );
 
   const [testSuites, setTestSuites] = useState<TestSuite[]>([]);
   const [isLoadingSuites, setIsLoadingSuites] = useState(false);
@@ -137,17 +161,6 @@ export function ExecutionProvider({ children }: { children: ReactNode }) {
   const [editedHeaders, setEditedHeaders] = useState<string[]>([]);
 
   const { toast } = useToast();
-
-  // Load initial state from session storage
-   useEffect(() => {
-    const projectFileName = sessionStorage.getItem('projectFileName');
-    if (projectFileName) setProjectFile(new File([], projectFileName));
-
-    const dataFileName = sessionStorage.getItem('dataFileName');
-    if (dataFileName) setDataFile(new File([], dataFileName));
-
-    setRequirementsContent(sessionStorage.getItem('requirementsContent'));
-   }, []);
 
   const addLog = useCallback((message: string) => {
     const timestamp = new Date().toLocaleTimeString();
@@ -375,9 +388,11 @@ export function ExecutionProvider({ children }: { children: ReactNode }) {
   const clearProjectFile = useCallback(() => {
     setProjectFile(null);
     setRequirementsContent(null);
-    sessionStorage.removeItem('projectFileName');
-    sessionStorage.removeItem('projectFileContent');
-    sessionStorage.removeItem('requirementsContent');
+    if (typeof window !== 'undefined') {
+        sessionStorage.removeItem('projectFileName');
+        sessionStorage.removeItem('projectFileContent');
+        sessionStorage.removeItem('requirementsContent');
+    }
     toast({ title: 'Project Cleared' });
   }, [toast]);
 
@@ -385,8 +400,10 @@ export function ExecutionProvider({ children }: { children: ReactNode }) {
     setDataFile(null);
     setEditedData([]);
     setEditedHeaders([]);
-    sessionStorage.removeItem('dataFileName');
-    sessionStorage.removeItem('dataFileContent');
+    if (typeof window !== 'undefined') {
+        sessionStorage.removeItem('dataFileName');
+        sessionStorage.removeItem('dataFileContent');
+    }
     toast({ title: 'Data File Cleared' });
   }, [toast]);
 
@@ -397,9 +414,11 @@ export function ExecutionProvider({ children }: { children: ReactNode }) {
     }
     setDataFile(file);
     try {
-      const dataUrl = await fileToDataURL(file);
-      sessionStorage.setItem('dataFileName', file.name);
-      sessionStorage.setItem('dataFileContent', dataUrl);
+      if (typeof window !== 'undefined') {
+        const dataUrl = await fileToDataURL(file);
+        sessionStorage.setItem('dataFileName', file.name);
+        sessionStorage.setItem('dataFileContent', dataUrl);
+      }
       parseAndSetDataFile(file);
       toast({
         title: 'Data File Uploaded',
@@ -418,13 +437,19 @@ export function ExecutionProvider({ children }: { children: ReactNode }) {
     }
 
     setProjectFile(file);
-    sessionStorage.setItem('projectFileName', file.name);
+    if (typeof window !== 'undefined') {
+        sessionStorage.setItem('projectFileName', file.name);
+    }
     setRequirementsContent(null);
-    sessionStorage.removeItem('requirementsContent');
+    if (typeof window !== 'undefined') {
+        sessionStorage.removeItem('requirementsContent');
+    }
     
     try {
-      const dataUrl = await fileToDataURL(file);
-      sessionStorage.setItem('projectFileContent', dataUrl);
+      if (typeof window !== 'undefined') {
+          const dataUrl = await fileToDataURL(file);
+          sessionStorage.setItem('projectFileContent', dataUrl);
+      }
 
       toast({
         title: 'Project Uploaded Successfully',
@@ -434,7 +459,6 @@ export function ExecutionProvider({ children }: { children: ReactNode }) {
 
       const zip = await JSZip.loadAsync(file);
       
-      // Find and set requirements.txt
       let reqFileEntry: JSZip.JSZipObject | null = null;
       zip.forEach((relativePath, zipEntry) => {
         if (relativePath.endsWith('requirements.txt') && !zipEntry.dir) {
@@ -445,7 +469,9 @@ export function ExecutionProvider({ children }: { children: ReactNode }) {
       if (reqFileEntry) {
         const content = await reqFileEntry.async('string');
         setRequirementsContent(content);
-        sessionStorage.setItem('requirementsContent', content);
+        if (typeof window !== 'undefined') {
+            sessionStorage.setItem('requirementsContent', content);
+        }
          toast({
             title: 'Found requirements.txt',
             description: "Dependencies are ready to be scanned.",
@@ -458,7 +484,6 @@ export function ExecutionProvider({ children }: { children: ReactNode }) {
         });
       }
       
-      // Find and auto-load data file if not present
       if (!dataFile) {
         let dataFileEntry: JSZip.JSZipObject | null = null;
         zip.forEach((relativePath, zipEntry) => {
