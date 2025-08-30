@@ -70,7 +70,7 @@ export default function HelpPage() {
               <div>
                 <h4 className="font-semibold">Find the Backend Code</h4>
                 <p className="text-muted-foreground">
-                  This project already includes an example backend server in the <code className="font-mono bg-muted p-1 rounded">python_backend_example</code> directory.
+                  This project already includes the backend server in the <code className="font-mono bg-muted p-1 rounded">python_backend_example</code> directory.
                 </p>
               </div>
             </div>
@@ -79,13 +79,22 @@ export default function HelpPage() {
               <div>
                 <h4 className="font-semibold">Install Dependencies</h4>
                 <p className="text-muted-foreground mb-2">
-                  In a **new terminal**, navigate to the `python_backend_example` directory and install its requirement (Flask):
+                  In a **new terminal**, navigate to the `python_backend_example` directory and install its requirements:
                 </p>
-                <pre className="bg-muted p-2 rounded-md font-mono text-sm">pip install Flask</pre>
+                <pre className="bg-muted p-2 rounded-md font-mono text-sm">pip install Flask robotframework</pre>
               </div>
             </div>
              <div className="flex items-start gap-4">
               <div className="flex h-10 w-10 text-lg items-center justify-center rounded-full bg-primary/10 text-primary font-bold">3</div>
+              <div>
+                <h4 className="font-semibold">Configure the Backend</h4>
+                 <p className="text-muted-foreground mb-2">
+                  Open the file <code className="font-mono bg-muted p-1 rounded">python_backend_example/server.py</code> and locate the `tests_directory` variable. **You must change this path** to point to the folder containing your Robot Framework tests.
+                </p>
+              </div>
+            </div>
+             <div className="flex items-start gap-4">
+              <div className="flex h-10 w-10 text-lg items-center justify-center rounded-full bg-primary/10 text-primary font-bold">4</div>
               <div>
                 <h4 className="font-semibold">Run the Backend Server</h4>
                 <p className="text-muted-foreground mb-2">
@@ -93,33 +102,23 @@ export default function HelpPage() {
                 </p>
                 <pre className="bg-muted p-2 rounded-md font-mono text-sm">flask --app server run --port=5001</pre>
                  <p className="text-muted-foreground mt-2">
-                  This server will now be listening for jobs from Robot Maestro.
+                  This server will now be listening for jobs from Robot Maestro. Keep this terminal window open.
                 </p>
               </div>
             </div>
           </div>
 
           <div className="space-y-6">
-            <h3 className="font-headline text-lg font-semibold border-b pb-2 mb-4">Part 3: Making it Real</h3>
+            <h3 className="font-headline text-lg font-semibold border-b pb-2 mb-4">Part 3: Execute Your Tests</h3>
              <div className="flex items-start gap-4">
               <div className="flex h-10 w-10 items-center justify-center rounded-full bg-primary/10 text-primary">
-                <Settings className="h-6 w-6" />
+                <Play className="h-6 w-6" />
               </div>
               <div>
-                <h4 className="font-semibold">Customize the Python Backend</h4>
+                <h4 className="font-semibold">Start Running Tests</h4>
                 <p className="text-muted-foreground">
-                  The provided <code className="font-mono bg-muted p-1 rounded">server.py</code> only *simulates* a test run. To execute your actual tests, you need to modify it.
+                  With both the frontend and backend servers running, you can now use the Robot Maestro UI. Navigate to the <Link href="/dashboard/execution" className="text-primary font-medium hover:underline">Execution</Link> page, enter your tags or suite names, and click run. The results you see will be from your actual Robot Framework project.
                 </p>
-                <ul className="mt-2 list-disc list-inside text-muted-foreground space-y-1">
-                    <li>Open `python_backend_example/server.py`.</li>
-                    <li>Find the `run_robot_tests` function.</li>
-                    <li>Replace the simulation logic with a call to Python's `subprocess` module.</li>
-                    <li>Construct the actual `robot` command (e.g., `robot -i smoke path/to/your/tests`).</li>
-                    <li>Capture the real output and return it.</li>
-                </ul>
-                 <p className="mt-2 text-sm text-muted-foreground">
-                    This step is crucial for connecting Robot Maestro to your specific Robot Framework projects.
-                 </p>
               </div>
             </div>
           </div>

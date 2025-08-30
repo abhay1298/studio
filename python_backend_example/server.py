@@ -28,13 +28,11 @@ def run_robot_tests():
         runType = data.get('runType')
         config = data.get('config', {})
         
-        # --- Define the directory where your tests are located ---
-        # For this example, we assume there's a 'tests' folder sibling to this script.
-        # You may need to change this to an absolute path depending on your setup.
-        tests_directory = os.path.join(os.path.dirname(__file__), '..', 'tests')
-        if not os.path.isdir(tests_directory):
-            # As a fallback, use a generic 'tests' path
-            tests_directory = 'tests'
+        # --- IMPORTANT: CONFIGURE YOUR TEST DIRECTORY ---
+        # This is the path to your Robot Framework tests.
+        # For this example, we assume there's a 'tests' folder sibling to the `python_backend_example` directory.
+        # You MUST change this path to point to your actual test suite.
+        tests_directory = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'tests'))
 
 
         # --- Command Construction (Real) ---
@@ -59,6 +57,7 @@ def run_robot_tests():
         print(f"Received Run Type: {runType}")
         print(f"Received Config: {config}")
         print(f"Constructed Command: {' '.join(command)}")
+        print(f"Executing in directory: {tests_directory}")
         print("------------------------------")
         
         # --- Real Execution using subprocess ---
@@ -100,8 +99,8 @@ def run_robot_tests():
         # A real implementation would parse the output.xml from Robot Framework
         # to get the exact counts. This is a placeholder for that logic.
         output_text = process.stdout + process.stderr
-        pass_count = output_text.count('[PASS]')
-        fail_count = output_text.count('[FAIL]')
+        pass_count = output_text.count('| PASS |')
+        fail_count = output_text.count('| FAIL |')
         
         # If no explicit pass/fail found, simulate some for demo purposes
         if status == 'success' and pass_count == 0 and fail_count == 0:
