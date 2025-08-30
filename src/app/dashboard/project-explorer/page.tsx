@@ -29,17 +29,25 @@ export default function ProjectExplorerPage() {
     const testCases: string[] = [];
     const lines = content.split(/\r?\n/);
     let inTestCasesSection = false;
+  
     for (const line of lines) {
-        if (line.trim().toLowerCase() === '*** test cases ***') {
-            inTestCasesSection = true;
-            continue;
+      const trimmedLine = line.trim();
+  
+      // Check for section headers
+      if (trimmedLine.startsWith('***')) {
+        inTestCasesSection = trimmedLine.toLowerCase() === '*** test cases ***';
+        continue; // Move to the next line after finding a section header
+      }
+  
+      // If we are in the test cases section and the line is a valid test case definition
+      if (inTestCasesSection && trimmedLine) {
+        // A valid test case starts with a non-space character and is not a comment.
+        // It also does not start with '[', which would be a setting like [Documentation] or [Tags]
+        const isIndented = line.startsWith('  ') || line.startsWith('\t');
+        if (!isIndented && !trimmedLine.startsWith('#') && !trimmedLine.startsWith('[')) {
+          testCases.push(trimmedLine);
         }
-        if (line.trim().startsWith('***')) {
-            inTestCasesSection = false;
-        }
-        if (inTestCasesSection && line.trim() && !line.startsWith(' ') && !line.startsWith('\t') && !line.startsWith('#')) {
-            testCases.push(line.trim());
-        }
+      }
     }
     return testCases;
   };
@@ -114,6 +122,7 @@ export default function ProjectExplorerPage() {
     const storedFileContent = sessionStorage.getItem(PROJECT_FILE_CONTENT_KEY);
 
     if (storedFileName && storedFileContent) {
+        // We create a dummy file just for display purposes, the actual content is in the data URL
         const dummyFile = new File([], storedFileName, { type: 'application/zip' });
         setProjectFile(dummyFile);
         
@@ -123,10 +132,16 @@ export default function ProjectExplorerPage() {
                 setTestSuites(JSON.parse(storedSuites));
             } catch (e) {
                 console.error("Failed to parse stored suites", e);
+                // If parsing fails, re-parse from the stored content
                 sessionStorage.removeItem(TEST_SUITES_KEY);
+                 fetch(storedFileContent)
+                    .then(res => res.blob())
+                    .then(blob => {
+                        parseProjectData(blob);
+                    });
             }
         } else {
-            fetch(storedFileContent)
+             fetch(storedFileContent)
                 .then(res => res.blob())
                 .then(blob => {
                     parseProjectData(blob);
