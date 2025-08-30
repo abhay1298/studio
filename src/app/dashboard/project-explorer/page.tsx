@@ -7,6 +7,7 @@ import { DependencyChecker } from '@/components/dashboard/dependency-checker';
 import { ProjectExplorer as ProjectExplorerComponent, TestSuite } from '@/components/dashboard/project-explorer';
 import JSZip from 'jszip';
 
+const PROJECT_FILE_KEY = 'uploadedProjectFile';
 const PROJECT_FILE_NAME_KEY = 'uploadedProjectFileName';
 const TEST_SUITES_KEY = 'parsedTestSuites';
 
@@ -14,13 +15,14 @@ export default function ProjectExplorerPage() {
   const [projectFile, setProjectFile] = useState<File | null>(null);
   const [testSuites, setTestSuites] = useState<TestSuite[]>([]);
   const [isParsing, setIsParsing] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
 
   const parseRobotFile = (content: string): string[] => {
     const testCases: string[] = [];
     const lines = content.split(/\r?\n/);
     let inTestCasesSection = false;
     for (const line of lines) {
-        if (line.trim().startsWith('*** Test Cases ***')) {
+        if (line.trim().toLowerCase() === '*** test cases ***') {
             inTestCasesSection = true;
             continue;
         }
@@ -34,24 +36,13 @@ export default function ProjectExplorerPage() {
     return testCases;
   };
   
-  const handleProjectFileChange = async (file: File | null) => {
-    setProjectFile(file);
-     // Dispatch a custom event so other components (like the dashboard page) know the project has been updated
-    window.dispatchEvent(new CustomEvent('projectUpdated'));
-
-    if (!file) {
-        setTestSuites([]);
-        sessionStorage.removeItem(PROJECT_FILE_NAME_KEY);
-        sessionStorage.removeItem(TEST_SUITES_KEY);
-        return;
-    }
-
+  const parseProjectData = useCallback(async (projectData: File | Blob) => {
     setIsParsing(true);
     try {
-        const zip = await JSZip.loadAsync(file);
+        const zip = await JSZip.loadAsync(projectData);
         const suites: TestSuite[] = [];
         const robotFilePromises = Object.keys(zip.files)
-            .filter(filename => filename.endsWith('.robot'))
+            .filter(filename => !zip.files[filename].dir && filename.endsWith('.robot'))
             .map(async (filename) => {
                 const fileContent = await zip.files[filename].async('string');
                 const testCases = parseRobotFile(fileContent);
@@ -64,28 +55,41 @@ export default function ProjectExplorerPage() {
         const sortedSuites = suites.sort((a,b) => a.name.localeCompare(b.name));
         setTestSuites(sortedSuites);
         sessionStorage.setItem(TEST_SUITES_KEY, JSON.stringify(sortedSuites));
-
-
     } catch (error) {
         console.error("Failed to parse zip file:", error);
         setTestSuites([]);
         sessionStorage.removeItem(TEST_SUITES_KEY);
-
     } finally {
         setIsParsing(false);
     }
+  }, []);
+
+  const handleProjectFileChange = async (file: File | null) => {
+    setProjectFile(file);
+    window.dispatchEvent(new CustomEvent('projectUpdated'));
+
+    if (!file) {
+        setTestSuites([]);
+        sessionStorage.removeItem(PROJECT_FILE_KEY);
+        sessionStorage.removeItem(PROJECT_FILE_NAME_KEY);
+        sessionStorage.removeItem(TEST_SUITES_KEY);
+        return;
+    }
+
+    await parseProjectData(file);
   };
 
 
   useEffect(() => {
-    // Restore project file state from sessionStorage
-    const storedProjectFileName = sessionStorage.getItem(PROJECT_FILE_NAME_KEY);
-    if (storedProjectFileName) {
-      // Create a dummy file to represent the state, actual parsing will be triggered by re-upload
-      const dummyFile = new File([], storedProjectFileName, { type: 'application/zip' });
-      setProjectFile(dummyFile);
+    setIsLoading(true);
+    const storedFileName = sessionStorage.getItem(PROJECT_FILE_NAME_KEY);
+    const storedFileContent = sessionStorage.getItem(PROJECT_FILE_KEY);
+
+    if (storedFileName) {
+        const dummyFile = new File([], storedFileName, { type: 'application/zip' });
+        setProjectFile(dummyFile);
     }
-    // Restore parsed suites from sessionStorage
+
     const storedSuites = sessionStorage.getItem(TEST_SUITES_KEY);
     if (storedSuites) {
         try {
@@ -94,8 +98,16 @@ export default function ProjectExplorerPage() {
             console.error("Failed to parse stored suites", e);
             sessionStorage.removeItem(TEST_SUITES_KEY);
         }
+    } else if (storedFileContent) {
+        // If suites aren't cached, but the file is, parse it.
+        fetch(storedFileContent)
+            .then(res => res.blob())
+            .then(blob => {
+                parseProjectData(blob);
+            });
     }
-  }, []);
+    setIsLoading(false);
+  }, [parseProjectData]);
 
   return (
     <div className="space-y-6">
@@ -108,7 +120,7 @@ export default function ProjectExplorerPage() {
                 <DependencyChecker projectFile={projectFile} />
             </div>
             <div className="lg:col-span-2">
-                <ProjectExplorerComponent suites={testSuites} isLoading={isParsing} />
+                <ProjectExplorerComponent suites={testSuites} isLoading={isParsing || isLoading} />
             </div>
         </div>
     </div>

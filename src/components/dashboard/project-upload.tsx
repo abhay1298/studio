@@ -26,6 +26,7 @@ type ProjectUploadProps = {
   projectFile: File | null;
 };
 
+const PROJECT_FILE_KEY = 'uploadedProjectFile';
 const PROJECT_FILE_NAME_KEY = 'uploadedProjectFileName';
 
 // Helper to create a mock data file for the simulation
@@ -85,6 +86,7 @@ export function ProjectUpload({ onProjectFileChange, projectFile }: ProjectUploa
     if (!file) {
       if (fileType === 'project') {
         onProjectFileChange(null);
+        sessionStorage.removeItem(PROJECT_FILE_KEY);
         sessionStorage.removeItem(PROJECT_FILE_NAME_KEY);
       }
       if (fileType === 'data') {
@@ -107,12 +109,20 @@ export function ProjectUpload({ onProjectFileChange, projectFile }: ProjectUploa
     ];
 
     let isValid = false;
+    const reader = new FileReader();
 
     if (fileType === 'project') {
       if (allowedProjectTypes.includes(file.type)) {
         isValid = true;
-        onProjectFileChange(file);
-        sessionStorage.setItem(PROJECT_FILE_NAME_KEY, file.name);
+        reader.onload = function(event) {
+            if (typeof window !== 'undefined' && event.target?.result) {
+                sessionStorage.setItem(PROJECT_FILE_KEY, event.target.result as string);
+                sessionStorage.setItem(PROJECT_FILE_NAME_KEY, file.name);
+                onProjectFileChange(file); // This will trigger the parsing
+            }
+        };
+        reader.readAsDataURL(file);
+
         // SIMULATION: Check if project contains a data file
         if (file.name.includes("with-data")) {
             const mockData = createMockDataFile();
@@ -120,13 +130,13 @@ export function ProjectUpload({ onProjectFileChange, projectFile }: ProjectUploa
         }
       } else {
         onProjectFileChange(null);
+        sessionStorage.removeItem(PROJECT_FILE_KEY);
         sessionStorage.removeItem(PROJECT_FILE_NAME_KEY);
       }
     } else if (fileType === 'data') {
       if (allowedDataTypes.includes(file.type)) {
         isValid = true;
         setDataFile(file);
-        const reader = new FileReader();
         reader.onload = function(event) {
           if (typeof window !== 'undefined' && event.target?.result) {
             sessionStorage.setItem('uploadedDataFile', event.target.result as string);
@@ -192,9 +202,15 @@ export function ProjectUpload({ onProjectFileChange, projectFile }: ProjectUploa
     setTimeout(() => {
         setIsCloning(false);
         const repoName = gitUrl.split('/').pop()?.replace('.git', '') || 'repository';
+        // Can't create a real zip, so we'll use a dummy file and name
         const dummyFile = new File([], `${repoName}.zip`, { type: 'application/zip'});
-        onProjectFileChange(dummyFile);
+        // Since this is a simulation, we can't fetch a real zip file's content
+        // so we'll just set the name and let the parent know.
+        // In a real scenario, the backend would handle the git clone and provide the zip.
         sessionStorage.setItem(PROJECT_FILE_NAME_KEY, dummyFile.name);
+        sessionStorage.removeItem(PROJECT_FILE_KEY); // Remove any old file content
+        onProjectFileChange(dummyFile);
+        
         toast({
             title: 'Repository Cloned',
             description: `Successfully imported project from '${repoName}'.`,
@@ -212,7 +228,6 @@ export function ProjectUpload({ onProjectFileChange, projectFile }: ProjectUploa
   
   const handleClearProject = () => {
     onProjectFileChange(null);
-    sessionStorage.removeItem(PROJECT_FILE_NAME_KEY);
     toast({
         title: 'Project Cleared',
         description: 'The active project has been unloaded.',
