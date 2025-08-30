@@ -39,24 +39,34 @@ export default function ReportsPage() {
   const [reports, setReports] = useState<Report[]>([]);
 
   useEffect(() => {
-    if (typeof window !== 'undefined') {
-        const history = localStorage.getItem('robotMaestroRuns');
-        if (history) {
-          const runs = JSON.parse(history);
-          // The history is just the basic run info, we'll format it for the report view
-          const formattedReports = runs.map((run: any, index: number) => ({
-            id: `RUN-${new Date(run.date).getTime()}-${index}`, // Create a more unique ID
-            suite: run.suite,
-            status: run.status,
-            timestamp: new Date(run.date).toLocaleString(),
-            duration: run.duration,
-            // These are hardcoded for now as we don't get this from the API yet
-            pass: run.status === 'Success' ? Math.floor(Math.random() * 50) + 1 : Math.floor(Math.random() * 50),
-            fail: run.status === 'Success' ? 0 : Math.floor(Math.random() * 5) + 1,
-          })).reverse(); // Show newest first
-          setReports(formattedReports);
+    const loadReports = () => {
+        if (typeof window !== 'undefined') {
+            const history = localStorage.getItem('robotMaestroRuns');
+            if (history) {
+              const runs = JSON.parse(history);
+              // The history is just the basic run info, we'll format it for the report view
+              const formattedReports = runs.map((run: any, index: number) => ({
+                id: `RUN-${new Date(run.date).getTime()}-${index}`, // Create a more unique ID
+                suite: run.suite,
+                status: run.status,
+                timestamp: new Date(run.date).toLocaleString(),
+                duration: run.duration,
+                pass: run.pass,
+                fail: run.fail,
+              })).reverse(); // Show newest first
+              setReports(formattedReports);
+            }
         }
-    }
+    };
+    
+    loadReports();
+
+    window.addEventListener('runsUpdated', loadReports);
+    
+    return () => {
+        window.removeEventListener('runsUpdated', loadReports);
+    };
+
   }, []);
 
   const handleViewReport = (reportId: string) => {

@@ -25,8 +25,6 @@ def run_robot_tests():
         config = data.get('config', {})
 
         # --- Command Construction (Simulation) ---
-        # This is where you would build your actual 'robot' command
-        # based on the received configuration.
         command = ['robot']
 
         if runType == 'By Tag':
@@ -39,8 +37,6 @@ def run_robot_tests():
         elif runType == 'By Test Case' and config.get('testcase'):
             command.extend(['-t', config['testcase']])
         elif runType == 'Orchestrator':
-            # Logic for orchestrator would go here.
-            # You might use a different command or pass the data file path.
             command.append('path/to/orchestrator.robot')
         else: # Default run
             command.append('tests/')
@@ -52,10 +48,6 @@ def run_robot_tests():
         print("--------------------------")
         
         # --- Execution Simulation ---
-        # In a real app, you'd use subprocess.run() or subprocess.Popen() here.
-        # For this example, we'll just generate mock output.
-        
-        # Simulate some delay
         time.sleep(2)
 
         # Generate mock logs
@@ -77,13 +69,18 @@ def run_robot_tests():
         time.sleep(0.5)
         logs.append(f"TestCase: Home Page :: Verify home page elements...                            [PASS]")
         
+        pass_count = 2
+        fail_count = 0
+        
         if is_success:
             logs.append(f"TestCase: Purchase Flow :: Complete a purchase...                             [PASS]")
             status = 'success'
+            pass_count += 1
         else:
             logs.append(f"TestCase: Purchase Flow :: Complete a purchase...                             [FAIL]")
             logs.append("Error: Checkout button not found on page 'checkout.html'")
             status = 'failed'
+            fail_count += 1
         
         time.sleep(1)
         logs.append("------------------------------------------------------------------------------")
@@ -93,6 +90,8 @@ def run_robot_tests():
         return jsonify({
             "status": status,
             "logs": "\n".join(logs),
+            "pass_count": pass_count,
+            "fail_count": fail_count,
         })
 
     except Exception as e:
@@ -100,8 +99,4 @@ def run_robot_tests():
         return jsonify({"status": "error", "message": str(e)}), 500
 
 if __name__ == '__main__':
-    # It's recommended to run this with a production-ready WSGI server like Gunicorn
-    # For development:
-    # Set FLASK_APP=server.py
-    # flask run --port=5001
     app.run(host='0.0.0.0', port=5001, debug=True)

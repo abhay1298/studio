@@ -72,13 +72,21 @@ export function ExecutionPanel() {
     setRunConfig(prev => ({...prev, [field]: value}));
   };
 
-  const saveRunToHistory = (suiteName: string, status: 'Success' | 'Failed', duration: string) => {
+  const saveRunToHistory = (
+    suiteName: string, 
+    status: 'Success' | 'Failed', 
+    duration: string, 
+    passCount: number, 
+    failCount: number
+  ) => {
       if (typeof window !== 'undefined') {
           const newRun = {
               suite: suiteName,
               status,
               duration,
               date: new Date().toISOString(),
+              pass: passCount,
+              fail: failCount,
           };
           const history = localStorage.getItem('robotMaestroRuns');
           const runs = history ? JSON.parse(history) : [];
@@ -131,20 +139,33 @@ export function ExecutionPanel() {
       });
 
       const result = await response.json();
-
-      if (!response.ok) {
-        // Use the message from the backend response if available
-        throw new Error(result.message || 'The execution server returned an error.');
-      }
       
       const endTime = Date.now();
       const duration = ((endTime - startTime) / 1000).toFixed(2) + 's';
       const suiteName = getSuiteNameForRun(runType);
 
+      if (!response.ok) {
+        const errorMessage = result.message || 'The execution server returned an error.';
+        setLogs(currentLogs => currentLogs + `\n[${new Date().toLocaleTimeString()}] Execution failed: ${errorMessage}`);
+        setStatus("failed");
+        saveRunToHistory(suiteName, 'Failed', duration, 0, 1); // Save with dummy fail count
+        toast({
+            variant: "destructive",
+            title: "Execution Error",
+            description: errorMessage,
+        });
+        return;
+      }
+      
       setLogs(currentLogs => currentLogs + result.logs);
-      setStatus(result.status);
-      saveRunToHistory(suiteName, result.status === 'success' ? 'Success' : 'Failed', duration);
-
+      setStatus(result.status === 'success' ? 'success' : 'failed');
+      saveRunToHistory(
+        suiteName, 
+        result.status === 'success' ? 'Success' : 'Failed', 
+        duration,
+        result.pass_count || 0,
+        result.fail_count || 0
+      );
 
       if (result.status === 'success') {
         toast({
@@ -172,14 +193,14 @@ export function ExecutionPanel() {
       let toastDescription = "An unexpected error occurred. Please try again.";
 
       // Check for a generic network failure
-      if (errorMessage.includes('Failed to fetch')) {
+      if (errorMessage.includes('fetch failed')) {
         toastTitle = "Connection Error";
         toastDescription = "Could not connect to the execution service. Please ensure the Python backend is running. See the 'Help & Docs' page for instructions.";
       }
       
-      setLogs(currentLogs => currentLogs + `\n[${new Date().toLocaleTimeString()}] Execution failed: ${errorMessage}`);
+      setLogs(currentLogs => currentLogs + `\n[${new Date().toLocaleTimeString()}] Execution failed: ${toastDescription}`);
       setStatus("failed");
-      saveRunToHistory(suiteName, 'Failed', duration);
+      saveRunToHistory(suiteName, 'Failed', duration, 0, 1); // Save with dummy fail count
       toast({
         variant: "destructive",
         title: toastTitle,
