@@ -12,13 +12,11 @@ export default function DashboardLayout({
   return (
     <SharedStateProvider>
         <SidebarProvider>
-        <DashboardSidebar />
-        <SidebarInset>
+          <DashboardSidebar />
+          <SidebarInset>
             <DashboardHeader />
-            <main className="relative z-0 flex-1 p-4 sm:p-6 lg:p-8 bg-background">
-              <div className="w-full overflow-x-auto">
+            <main className="relative flex-1 p-4 sm:p-6 lg:p-8 bg-background overflow-y-auto">
                 {children}
-              </div>
             </main>
         </SidebarInset>
         </SidebarProvider>

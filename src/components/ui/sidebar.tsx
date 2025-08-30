@@ -318,18 +318,31 @@ const SidebarInset = React.forwardRef<
   HTMLDivElement,
   React.ComponentProps<"main">
 >(({ className, ...props }, ref) => {
-  return (
-    <main
-      ref={ref}
-      className={cn(
-        "relative flex min-h-svh flex-1 flex-col bg-background transition-all peer-data-[collapsible=icon]:md:ml-[--sidebar-width-icon] md:ml-[--sidebar-width]",
-        "peer-data-[variant=inset]:min-h-[calc(100svh-theme(spacing.4))] md:peer-data-[variant=inset]:m-2 md:peer-data-[state=collapsed]:peer-data-[variant=inset]:ml-[calc(var(--sidebar-width-icon)_+2rem)] md:peer-data-[variant=inset]:ml-[calc(var(--sidebar-width)_+1rem)] md:peer-data-[variant=inset]:rounded-xl md:peer-data-[variant=inset]:shadow",
-        className
-      )}
-      {...props}
-    />
-  )
-})
+    const { isMobile, state } = useSidebar();
+
+    if (isMobile) {
+        return (
+            <main
+                ref={ref}
+                className={cn("flex-1 bg-background", className)}
+                {...props}
+            />
+        )
+    }
+
+    return (
+        <main
+        ref={ref}
+        className={cn(
+            "relative flex min-h-svh flex-1 flex-col bg-background transition-all",
+            state === 'expanded' ? 'md:ml-[--sidebar-width]' : 'md:ml-[--sidebar-width-icon]',
+            className
+        )}
+        {...props}
+        />
+    );
+});
+
 SidebarInset.displayName = "SidebarInset"
 
 const SidebarInput = React.forwardRef<
