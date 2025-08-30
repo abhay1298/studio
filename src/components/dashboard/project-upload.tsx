@@ -1,7 +1,8 @@
+
 "use client";
 
 import * as React from 'react';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   Card,
@@ -15,13 +16,15 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Button, buttonVariants } from '@/components/ui/button';
 import { useToast } from '@/hooks/use-toast';
-import { UploadCloud, FileCheck2, FileWarning, FileX2, Pencil, GitBranch, Loader2, FolderArchive, FileSpreadsheet } from 'lucide-react';
+import { UploadCloud, FileCheck2, FileX2, Pencil, GitBranch, Loader2, FolderArchive, FileSpreadsheet } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../ui/tabs';
 import * as JSZip from 'jszip';
 
 
 type ProjectUploadProps = {
+    onProjectFileChange: (file: File | null) => void;
+    initialProjectFile: File | null;
 };
 
 // Helper to create a mock data file for the simulation
@@ -31,21 +34,21 @@ const createMockDataFile = (content: string | ArrayBuffer, name: string): File =
 };
 
 
-export function ProjectUpload(props: ProjectUploadProps) {
+export function ProjectUpload({ onProjectFileChange, initialProjectFile }: ProjectUploadProps) {
   const { toast } = useToast();
   const router = useRouter();
-  const [projectFile, setProjectFile] = useState<File | null>(null);
+  const [projectFile, setProjectFile] = useState<File | null>(initialProjectFile);
   const [dataFile, setDataFile] = useState<File | null>(null);
   const [gitUrl, setGitUrl] = useState('');
   const [isCloning, setIsCloning] = useState(false);
 
-  React.useEffect(() => {
-    // Restore file state from sessionStorage on component mount
-    const storedProjectFileName = sessionStorage.getItem('uploadedProjectFileName');
-     if (storedProjectFileName) {
-        const dummyProjectFile = new File([], storedProjectFileName, { type: 'application/zip' });
-        setProjectFile(dummyProjectFile);
-    }
+  useEffect(() => {
+    setProjectFile(initialProjectFile);
+  }, [initialProjectFile]);
+
+
+  useEffect(() => {
+    // Restore data file state from sessionStorage on component mount
     const storedDataFileName = sessionStorage.getItem('uploadedDataFileName');
     if (storedDataFileName) {
         const dummyDataFile = new File([], storedDataFileName, { type: 'text/csv' });
@@ -55,10 +58,7 @@ export function ProjectUpload(props: ProjectUploadProps) {
 
   const clearProjectFile = () => {
     setProjectFile(null);
-    if (typeof window !== 'undefined') {
-      sessionStorage.removeItem('uploadedProjectFileName');
-      window.dispatchEvent(new CustomEvent('projectUpdated'));
-    }
+    onProjectFileChange(null);
     toast({ title: 'Project Cleared', description: 'The active project has been removed.' });
   };
   
@@ -121,7 +121,7 @@ export function ProjectUpload(props: ProjectUploadProps) {
       if (allowedProjectTypes.includes(file.type)) {
         isValid = true;
         setProjectFile(file);
-        sessionStorage.setItem('uploadedProjectFileName', file.name);
+        onProjectFileChange(file); // Notify parent
 
         // Check for data file inside zip
         try {
@@ -145,6 +145,7 @@ export function ProjectUpload(props: ProjectUploadProps) {
         
       } else {
         setProjectFile(null);
+        onProjectFileChange(null);
       }
     } else if (fileType === 'data') {
       if (allowedDataTypes.includes(file.type)) {
@@ -205,8 +206,7 @@ export function ProjectUpload(props: ProjectUploadProps) {
         const repoName = gitUrl.split('/').pop()?.replace('.git', '') || 'repository';
         const dummyFile = new File([], `${repoName}.zip`, { type: 'application/zip'});
         setProjectFile(dummyFile);
-        sessionStorage.setItem('uploadedProjectFileName', dummyFile.name);
-        window.dispatchEvent(new CustomEvent('projectUpdated'));
+        onProjectFileChange(dummyFile);
         
         toast({
             title: 'Repository Imported',
@@ -222,7 +222,7 @@ export function ProjectUpload(props: ProjectUploadProps) {
       <CardHeader>
         <CardTitle className="font-headline">Load Project</CardTitle>
         <CardDescription>
-          Upload your project zip or import from Git to get started. Note: This does not transfer files to the backend; it's for UI simulation.
+          Upload your project zip or import from Git to get started. This will be scanned for a `requirements.txt` file.
         </CardDescription>
       </CardHeader>
       
