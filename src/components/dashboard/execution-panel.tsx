@@ -23,6 +23,7 @@ import {
   XCircle,
   Trash2,
   StopCircle,
+  Rocket,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { Alert, AlertDescription, AlertTitle } from "../ui/alert";
@@ -93,11 +94,12 @@ export function ExecutionPanel() {
     <Card>
       <Tabs defaultValue="tag">
         <CardHeader>
-          <TabsList className="grid w-full grid-cols-4">
+          <TabsList className="grid w-full grid-cols-5">
             <TabsTrigger value="tag" disabled={isRunning}>By Tag</TabsTrigger>
             <TabsTrigger value="suite" disabled={isRunning}>By Suite</TabsTrigger>
             <TabsTrigger value="testcase" disabled={isRunning}>By Test Case</TabsTrigger>
             <TabsTrigger value="orchestrator" disabled={isRunning}>Orchestrator</TabsTrigger>
+            <TabsTrigger value="all" disabled={isRunning}>Run All</TabsTrigger>
           </TabsList>
         </CardHeader>
 
@@ -149,6 +151,22 @@ export function ExecutionPanel() {
               <Button onClick={() => handleRunClick("Orchestrator")} disabled={isRunning || !isDataFileUploaded}>
                 {isRunning && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                 Run via Orchestrator
+              </Button>
+            </div>
+          </TabsContent>
+
+           <TabsContent value="all">
+            <div className="space-y-4">
+                <Alert variant="default" className="border-primary/50">
+                    <Rocket className="h-4 w-4" />
+                    <AlertTitle>Full Regression Suite</AlertTitle>
+                    <AlertDescription>
+                        This will execute all available tests in your configured test directory. This may take a long time to complete.
+                    </AlertDescription>
+                </Alert>
+              <Button onClick={() => handleRunClick("Run All")} disabled={isRunning}>
+                {isRunning && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                Run All Tests
               </Button>
             </div>
           </TabsContent>

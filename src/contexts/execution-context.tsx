@@ -148,6 +148,8 @@ export function ExecutionProvider({ children }: { children: ReactNode }) {
             return `Test: ${runConfig.testcase || 'all'}`;
         case 'Orchestrator':
             return 'Orchestrator Run';
+        case 'Run All':
+            return 'Full Test Suite';
         default:
             return 'Unnamed Run';
     }
