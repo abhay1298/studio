@@ -15,9 +15,10 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Button, buttonVariants } from '@/components/ui/button';
 import { useToast } from '@/hooks/use-toast';
-import { UploadCloud, FileCheck2, FileWarning, FileX2, Pencil, GitBranch, Loader2 } from 'lucide-react';
+import { UploadCloud, FileCheck2, FileWarning, FileX2, Pencil, GitBranch, Loader2, XCircle } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../ui/tabs';
+import { Alert, AlertDescription, AlertTitle } from '../ui/alert';
 
 type ProjectUploadProps = {
   onProjectFileChange: (file: File | null) => void;
@@ -30,7 +31,6 @@ export function ProjectUpload({ onProjectFileChange }: ProjectUploadProps) {
   const [dataFile, setDataFile] = useState<File | null>(null);
   const [gitUrl, setGitUrl] = useState('');
   const [isCloning, setIsCloning] = useState(false);
-
 
   const handleFileChange = (
     e: React.ChangeEvent<HTMLInputElement>,
@@ -136,16 +136,25 @@ export function ProjectUpload({ onProjectFileChange }: ProjectUploadProps) {
     setTimeout(() => {
         setIsCloning(false);
         const repoName = gitUrl.split('/').pop()?.replace('.git', '') || 'repository';
+        const dummyFile = new File([], `${repoName}.zip`, { type: 'application/zip'});
+        setProjectFile(dummyFile);
+        onProjectFileChange(dummyFile);
         toast({
             title: 'Repository Cloned',
             description: `Successfully imported project from '${repoName}'. It is now the active project.`,
             action: <GitBranch className="text-green-500" />,
         });
-        // To make other components aware, you could set a dummy project file state
-        onProjectFileChange(new File([], `${repoName}.zip`, { type: 'application/zip'}));
-        setProjectFile(new File([], `${repoName}.zip`, { type: 'application/zip'}));
     }, 2000);
   };
+  
+  const handleClearProject = () => {
+    setProjectFile(null);
+    onProjectFileChange(null);
+    toast({
+        title: 'Project Cleared',
+        description: 'The active project has been unloaded.',
+    });
+  }
 
 
   return (
@@ -156,80 +165,109 @@ export function ProjectUpload({ onProjectFileChange }: ProjectUploadProps) {
           Upload your project files or import from a Git repository.
         </CardDescription>
       </CardHeader>
-      <Tabs defaultValue="upload" className="w-full">
-         <TabsList className="grid w-full grid-cols-2">
-            <TabsTrigger value="upload">
-                <UploadCloud className="mr-2 h-4 w-4" />
-                File Upload
-            </TabsTrigger>
-            <TabsTrigger value="git">
-                <GitBranch className="mr-2 h-4 w-4" />
-                Import from Git
-            </TabsTrigger>
-        </TabsList>
-        <TabsContent value="upload">
-            <CardContent className="grid gap-6 pt-6">
-                <div className="grid gap-2">
-                <Label htmlFor="project-file">Robot Framework Project (.zip)</Label>
-                <div className="flex items-center gap-2">
-                    <Label htmlFor="project-file" className={cn(
-                    "flex items-center gap-2 cursor-pointer",
-                    buttonVariants({ variant: 'outline' })
-                    )}>
-                    <UploadCloud />
-                    <span className="font-bold">Choose file</span>
-                    </Label>
-                    <Input
-                    id="project-file"
-                    type="file"
-                    className="hidden"
-                    accept=".zip"
-                    onChange={(e) => handleFileChange(e, 'project')}
-                    />
-                    {projectFile && <span className="text-sm text-muted-foreground truncate">{projectFile.name}</span>}
-                </div>
-                </div>
-                <div className="grid gap-2">
-                <Label htmlFor="data-file">Test Data for Orchestrator (.xlsx, .csv)</Label>
-                <div className="flex items-center gap-2">
-                    <Label htmlFor="data-file" className={cn(
-                    "flex items-center gap-2 cursor-pointer",
-                    buttonVariants({ variant: 'outline' })
-                    )}>
-                    <UploadCloud />
-                    <span className="font-bold">Choose file</span>
-                    </Label>
-                    <Input
-                    id="data-file"
-                    type="file"
-                    className="hidden"
-                    accept=".xlsx,.csv"
-                    onChange={(e) => handleFileChange(e, 'data')}
-                    />
-                    {dataFile && <span className="text-sm text-muted-foreground truncate">{dataFile.name}</span>}
-                </div>
-                </div>
-            </CardContent>
-        </TabsContent>
-         <TabsContent value="git">
-            <CardContent className="space-y-4 pt-6">
-                <div className="grid gap-2">
-                    <Label htmlFor="git-url">Git Repository URL</Label>
-                    <Input 
-                        id="git-url" 
-                        placeholder="https://github.com/your/repository.git"
-                        value={gitUrl}
-                        onChange={(e) => setGitUrl(e.target.value)}
-                        disabled={isCloning}
-                    />
-                </div>
-                 <Button onClick={handleGitImport} disabled={isCloning} className="w-full">
-                    {isCloning ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <GitBranch className="mr-2 h-4 w-4" />}
-                    {isCloning ? 'Importing...' : 'Import Project'}
-                </Button>
-            </CardContent>
-        </TabsContent>
-      </Tabs>
+      
+      {projectFile ? (
+        <CardContent className="space-y-4">
+            <Alert className="border-green-500/50 text-green-700 dark:border-green-500/50 dark:text-green-400">
+                <FileCheck2 className="h-4 w-4 !text-green-500" />
+                <AlertTitle>Active Project: {projectFile.name}</AlertTitle>
+                <AlertDescription>
+                    The application will use this project for dependency checking and execution.
+                </AlertDescription>
+            </Alert>
+            <Button variant="outline" className="w-full" onClick={handleClearProject}>
+                <XCircle className="mr-2 h-4 w-4" />
+                Clear Active Project
+            </Button>
+        </CardContent>
+      ) : (
+        <Tabs defaultValue="upload" className="w-full">
+            <TabsList className="grid w-full grid-cols-2">
+                <TabsTrigger value="upload">
+                    <UploadCloud className="mr-2 h-4 w-4" />
+                    File Upload
+                </TabsTrigger>
+                <TabsTrigger value="git">
+                    <GitBranch className="mr-2 h-4 w-4" />
+                    Import from Git
+                </TabsTrigger>
+            </TabsList>
+            <TabsContent value="upload">
+                <CardContent className="grid gap-6 pt-6">
+                    <div className="grid gap-2">
+                    <Label htmlFor="project-file">Robot Framework Project (.zip)</Label>
+                    <div className="flex items-center gap-2">
+                        <Label htmlFor="project-file" className={cn(
+                        "flex items-center gap-2 cursor-pointer",
+                        buttonVariants({ variant: 'outline' })
+                        )}>
+                        <UploadCloud />
+                        <span className="font-bold">Choose file</span>
+                        </Label>
+                        <Input
+                        id="project-file"
+                        type="file"
+                        className="hidden"
+                        accept=".zip"
+                        onChange={(e) => handleFileChange(e, 'project')}
+                        />
+                        {projectFile && <span className="text-sm text-muted-foreground truncate">{projectFile.name}</span>}
+                    </div>
+                    </div>
+                </CardContent>
+            </TabsContent>
+            <TabsContent value="git">
+                <CardContent className="space-y-4 pt-6">
+                    <div className="grid gap-2">
+                        <Label htmlFor="git-url">Git Repository URL</Label>
+                        <Input 
+                            id="git-url" 
+                            placeholder="https://github.com/your/repository.git"
+                            value={gitUrl}
+                            onChange={(e) => setGitUrl(e.targe.value)}
+                            disabled={isCloning}
+                        />
+                    </div>
+                    <Button onClick={handleGitImport} disabled={isCloning} className="w-full">
+                        {isCloning ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <GitBranch className="mr-2 h-4 w-4" />}
+                        {isCloning ? 'Importing...' : 'Import Project'}
+                    </Button>
+                </CardContent>
+            </TabsContent>
+        </Tabs>
+      )}
+
+      <Separator className="my-4" />
+
+      <CardHeader className="pt-0">
+         <CardTitle className="font-headline text-lg">Orchestrator Data</CardTitle>
+         <CardDescription>
+          Upload and manage the Excel or CSV file for orchestrator runs.
+        </CardDescription>
+      </CardHeader>
+      <CardContent>
+        <div className="grid gap-2">
+          <Label htmlFor="data-file">Test Data File (.xlsx, .csv)</Label>
+          <div className="flex items-center gap-2">
+              <Label htmlFor="data-file" className={cn(
+              "flex items-center gap-2 cursor-pointer",
+              buttonVariants({ variant: 'outline' })
+              )}>
+              <UploadCloud />
+              <span className="font-bold">Choose file</span>
+              </Label>
+              <Input
+              id="data-file"
+              type="file"
+              className="hidden"
+              accept=".xlsx,.csv"
+              onChange={(e) => handleFileChange(e, 'data')}
+              />
+              {dataFile && <span className="text-sm text-muted-foreground truncate">{dataFile.name}</span>}
+          </div>
+        </div>
+      </CardContent>
+       
        {dataFile && (
         <CardFooter>
           <Button variant="outline" className="w-full" onClick={handleEditClick}>
@@ -241,3 +279,11 @@ export function ProjectUpload({ onProjectFileChange }: ProjectUploadProps) {
     </Card>
   );
 }
+
+const Separator = React.forwardRef<
+  React.ElementRef<any>,
+  React.ComponentPropsWithoutRef<any>
+>(({ className, ...props }, ref) => (
+    <div ref={ref} className={cn("shrink-0 bg-border h-[1px] w-full", className)} {...props} />
+));
+Separator.displayName = 'Separator';
