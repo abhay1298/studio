@@ -70,31 +70,35 @@ const getInitialState = <T,>(key: string, defaultValue: T): T => {
 };
 
 const readFileAsArrayBuffer = (file: File): Promise<ArrayBuffer> => {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result as ArrayBuffer);
+    reader.onerror = () => reject(reader.error);
+    reader.readAsArrayBuffer(file);
+  });
+};
+
+const fileToDataURL = (file: File): Promise<string> => {
     return new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload = () => resolve(reader.result as ArrayBuffer);
-      reader.onerror = () => reject(reader.error);
-      reader.readAsArrayBuffer(file);
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result as string);
+        reader.onerror = () => reject(new Error(`Failed to read file: ${reader.error ? reader.error.message : 'Unknown error'}`));
+        reader.readAsDataURL(file);
     });
-  };
+};
 
 const dataURLtoBlob = (dataurl: string): Blob => {
     const arr = dataurl.split(',');
-    if (arr.length < 2) {
-        throw new Error('Invalid data URL');
-    }
     const mimeMatch = arr[0].match(/:(.*?);/);
-    if (!mimeMatch) {
-        throw new Error('Could not parse MIME type from data URL');
-    }
+    if (!mimeMatch) throw new Error('Could not parse MIME type from data URL');
     const mime = mimeMatch[1];
     const bstr = atob(arr[1]);
     let n = bstr.length;
     const u8arr = new Uint8Array(n);
-    while(n--){
+    while (n--) {
         u8arr[n] = bstr.charCodeAt(n);
     }
-    return new Blob([u8arr], {type:mime});
+    return new Blob([u8arr], { type: mime });
 };
 
 
@@ -152,12 +156,10 @@ export function ExecutionProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
-  // Fetch suites on initial load if a project is already "loaded"
+  // Fetch suites on initial load
   useEffect(() => {
-    if (projectFileName) {
-        fetchSuites();
-    }
-  }, [projectFileName, fetchSuites]);
+    fetchSuites();
+  }, [fetchSuites]);
 
   const addLog = useCallback((message: string) => {
     const timestamp = new Date().toLocaleTimeString();
@@ -375,8 +377,6 @@ export function ExecutionProvider({ children }: { children: ReactNode }) {
   const clearProjectFile = useCallback(() => {
     setProjectFileName(null);
     setRequirementsContent(null);
-    setTestSuites([]);
-    setSuiteLoadError(null);
     toast({ title: 'Project Cleared' });
   }, [toast]);
 
@@ -387,15 +387,6 @@ export function ExecutionProvider({ children }: { children: ReactNode }) {
     setEditedHeaders([]);
     toast({ title: 'Data File Cleared' });
   }, [toast]);
-
-  const fileToDataURL = (file: File): Promise<string> => {
-      return new Promise((resolve, reject) => {
-          const reader = new FileReader();
-          reader.onload = () => resolve(reader.result as string);
-          reader.onerror = () => reject(new Error(`Failed to read file: ${reader.error ? reader.error.message : 'Unknown error'}`));
-          reader.readAsDataURL(file);
-      });
-  };
 
   const handleDataFileUpload = useCallback(async (file: File | null) => {
     if (!file) {
@@ -430,33 +421,38 @@ export function ExecutionProvider({ children }: { children: ReactNode }) {
     }
   
     setProjectFileName(file.name);
-    setTestSuites([]);
-    setSuiteLoadError(null);
-    setIsLoadingSuites(true);
   
     try {
-      const formData = new FormData();
-      formData.append('project', file);
-
-      const response = await fetch('/api/upload-project', {
-        method: 'POST',
-        body: formData,
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || "Failed to upload project to backend.");
+      const buffer = await readFileAsArrayBuffer(file);
+      const zip = await JSZip.loadAsync(buffer);
+      let reqsFound = false;
+  
+      // Find and read requirements.txt
+      const reqFile = Object.values(zip.files).find(f => f.name.endsWith('requirements.txt') && !f.dir);
+      if (reqFile) {
+        const content = await reqFile.async('string');
+        setRequirementsContent(content);
+        reqsFound = true;
+      } else {
+        setRequirementsContent(null);
       }
       
+      // Find and process a data file (CSV or XLSX)
+      const dataFile = Object.values(zip.files).find(f => (f.name.endsWith('.csv') || f.name.endsWith('.xlsx')) && !f.dir);
+      if (dataFile) {
+        const dataUrl = await dataFile.async('base64');
+        const fullDataUrl = `data:${dataFile.name.endsWith('.csv') ? 'text/csv' : 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'};base64,${dataUrl}`;
+        setDataFileContent(fullDataUrl);
+        setDataFileName(dataFile.name);
+        await parseAndSetDataFile(fullDataUrl, dataFile.name);
+      }
+
       toast({
-        title: 'Project Uploaded Successfully',
-        description: `${file.name} is now active on the backend.`,
+        title: 'Project Inspected Successfully',
+        description: `${file.name} loaded. ${reqsFound ? 'requirements.txt found.' : 'requirements.txt not found.'}`,
         action: <FileCheck2 className="text-green-500" />,
       });
-
-      // After successful upload, fetch the suites from the backend
-      await fetchSuites();
-
+  
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
       console.error("Error reading zip file:", errorMessage);
@@ -466,10 +462,8 @@ export function ExecutionProvider({ children }: { children: ReactNode }) {
         description: `Could not process the project file. Error: ${errorMessage}`,
       });
       clearProjectFile();
-    } finally {
-        setIsLoadingSuites(false);
     }
-  }, [clearProjectFile, fetchSuites, toast]);
+  }, [clearProjectFile, parseAndSetDataFile, toast]);
   
   const value = {
     status,
