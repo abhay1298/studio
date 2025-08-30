@@ -15,8 +15,10 @@ export default function DashboardLayout({
         <DashboardSidebar />
         <SidebarInset>
             <DashboardHeader />
-            <main className="flex-1 p-4 sm:p-6 lg:p-8 bg-background overflow-hidden">
-            {children}
+            <main className="relative z-0 flex-1 p-4 sm:p-6 lg:p-8 bg-background">
+              <div className="w-full overflow-x-auto">
+                {children}
+              </div>
             </main>
         </SidebarInset>
         </SidebarProvider>
