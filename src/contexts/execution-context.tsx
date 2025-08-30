@@ -7,6 +7,7 @@ import { CheckCircle2, FileCheck2, FileX2, XCircle } from 'lucide-react';
 import Papa from 'papaparse';
 import * as XLSX from 'xlsx';
 import type { TestSuite } from '@/components/dashboard/project-explorer';
+import JSZip from 'jszip';
 
 
 type ExecutionStatus = "idle" | "running" | "success" | "failed" | "stopped";
@@ -387,6 +388,15 @@ export function ExecutionProvider({ children }: { children: ReactNode }) {
     toast({ title: 'Data File Cleared' });
   }, [toast]);
 
+  const fileToDataURL = (file: File): Promise<string> => {
+      return new Promise((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => resolve(reader.result as string);
+          reader.onerror = () => reject(new Error(`Failed to read file: ${reader.error ? reader.error.message : 'Unknown error'}`));
+          reader.readAsDataURL(file);
+      });
+  };
+
   const handleDataFileUpload = useCallback(async (file: File | null) => {
     if (!file) {
       clearDataFile();
@@ -394,12 +404,7 @@ export function ExecutionProvider({ children }: { children: ReactNode }) {
     }
     
     try {
-      const dataUrl = await new Promise<string>((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onload = () => resolve(reader.result as string);
-        reader.onerror = () => reject(new Error(`Failed to read file: ${reader.error ? reader.error.message : 'Unknown error'}`));
-        reader.readAsDataURL(file);
-      });
+      const dataUrl = await fileToDataURL(file);
 
       setDataFileContent(dataUrl);
       setDataFileName(file.name);
@@ -454,10 +459,10 @@ export function ExecutionProvider({ children }: { children: ReactNode }) {
 
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
-      console.error("Error uploading project:", errorMessage);
+      console.error("Error reading zip file:", errorMessage);
       toast({
         variant: 'destructive',
-        title: 'Error Processing Project',
+        title: 'Error processing project',
         description: `Could not process the project file. Error: ${errorMessage}`,
       });
       clearProjectFile();
@@ -506,3 +511,5 @@ export function useExecutionContext() {
   }
   return context;
 }
+
+    

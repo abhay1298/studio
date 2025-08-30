@@ -23,3 +23,5 @@ export async function GET() {
     return NextResponse.json({ error: 'Failed to connect to backend service to list suites.', details: errorMessage }, { status: 500 });
   }
 }
+
+    
