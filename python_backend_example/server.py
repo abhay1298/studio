@@ -6,6 +6,7 @@ import time
 import random
 import os
 import signal
+import webbrowser # <-- Import the webbrowser library
 
 app = Flask(__name__)
 CORS(app) # Enable CORS for all routes
@@ -14,9 +15,9 @@ CORS(app) # Enable CORS for all routes
 # It now uses Python's `subprocess` module to execute real commands.
 # To use this:
 # 1. Make sure you have Robot Framework installed in the same Python environment.
-#    (e.g., `pip install robotframework`)
+#    (e.g., `pip install -r requirements.txt`)
 # 2. Place your Robot Framework project (e.g., your 'tests' folder)
-#    in a location accessible to this server. You might need to adjust paths.
+#    in a location accessible to this server.
 # 3. This server still simulates pass/fail counts for UI purposes.
 
 # Global variable to hold the running process
@@ -65,7 +66,7 @@ def run_robot_tests():
         print(f"Received Run Type: {runType}")
         print(f"Received Config: {config}")
         print(f"Constructed Command: {' '.join(command)}")
-        print(f"Executing in directory: {tests_directory}")
+        print(f"Executing in directory: {os.getcwd()}") # Log current working directory
         print("------------------------------")
         
         # --- Real Execution using subprocess ---
@@ -101,6 +102,14 @@ def run_robot_tests():
         if returncode == 0:
             status = 'success'
             logs.append("\nExecution Result: SUCCESS (Exit Code 0)")
+            # --- Auto-open report.html on success ---
+            report_path = os.path.join(os.getcwd(), 'report.html')
+            if os.path.exists(report_path):
+                logs.append(f"Attempting to open report.html at: {report_path}")
+                webbrowser.open('file://' + os.path.realpath(report_path))
+                logs.append("Successfully opened report.html in your default browser.")
+            else:
+                logs.append(f"Could not find report.html at {report_path}")
         else:
             status = 'failed'
             logs.append(f"\nExecution Result: FAILED (Exit Code {returncode})")
@@ -163,3 +172,5 @@ if __name__ == '__main__':
     # The command `flask run` uses a development server which is not suitable for production.
     # Using 127.0.0.1 is often more reliable for local development than 0.0.0.0.
     app.run(host='127.0.0.1', port=5001, debug=True)
+
+    
