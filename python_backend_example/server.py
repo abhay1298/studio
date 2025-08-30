@@ -9,9 +9,17 @@ import signal
 import webbrowser
 import datetime
 import shutil
+import zipfile
+import tempfile
 
 app = Flask(__name__)
 CORS(app) # Enable CORS for all routes
+
+# --- Global State ---
+# We now use a temporary directory for each uploaded project.
+# The `TESTS_DIRECTORY` will be updated dynamically.
+TESTS_DIRECTORY = None
+TEMP_DIR_PATH = None # Keep track of the temporary directory to clean up later
 
 # This is a more realistic execution backend.
 # It now uses Python's `subprocess` module to execute real commands.
@@ -30,12 +38,6 @@ if not os.path.exists(REPORTS_DIR):
     os.makedirs(REPORTS_DIR)
 
 
-# --- IMPORTANT: CONFIGURE YOUR TEST DIRECTORY ---
-# This is the path to your Robot Framework tests.
-# You MUST change this path to point to your actual test suite.
-# It should be the absolute path to the directory containing your .robot files.
-TESTS_DIRECTORY = r'C:\Users\c-aku\robotFramework\robotFramework\pythonProject\Test'
-
 def parse_robot_file(file_path):
     """Parses a .robot file to extract test case names."""
     test_cases = []
@@ -51,17 +53,67 @@ def parse_robot_file(file_path):
                     in_test_cases_section = False
                     continue
                 
+                # A test case starts a line, is not a setting [Tags], and is not a comment.
                 if in_test_cases_section and stripped_line and not stripped_line.startswith('#') and not stripped_line.startswith('[') and not line.startswith((' ', '\t')):
-                    # This is a basic heuristic: a line that is not a comment, not a setting, and not indented.
                     test_cases.append(stripped_line)
     except Exception as e:
         print(f"Could not parse file {file_path}: {e}")
     return test_cases
 
 
+@app.route('/upload-project', methods=['POST'])
+def upload_project():
+    """Handles uploading and extracting a .zip project file."""
+    global TESTS_DIRECTORY, TEMP_DIR_PATH
+    if 'project' not in request.files:
+        return jsonify({"error": "No project file part"}), 400
+    
+    file = request.files['project']
+    if file.filename == '':
+        return jsonify({"error": "No selected file"}), 400
+        
+    if file and file.filename.endswith('.zip'):
+        try:
+            # Clean up old temporary directory if it exists
+            if TEMP_DIR_PATH and os.path.exists(TEMP_DIR_PATH):
+                shutil.rmtree(TEMP_DIR_PATH)
+
+            # Create a new temporary directory
+            TEMP_DIR_PATH = tempfile.mkdtemp(prefix='robot_maestro_')
+            
+            zip_path = os.path.join(TEMP_DIR_PATH, file.filename)
+            file.save(zip_path)
+            
+            # Extract the zip file
+            with zipfile.ZipFile(zip_path, 'r') as zip_ref:
+                zip_ref.extractall(TEMP_DIR_PATH)
+            
+            # Find the most likely root test directory
+            # This is often the directory named after the zip, or the one containing .robot files
+            extracted_items = os.listdir(TEMP_DIR_PATH)
+            project_root = TEMP_DIR_PATH
+            # A simple heuristic: if there is one directory inside, assume that's the project root.
+            potential_roots = [item for item in extracted_items if os.path.isdir(os.path.join(TEMP_DIR_PATH, item))]
+            if len(potential_roots) == 1 and potential_roots[0] != '__MACOSX':
+                 project_root = os.path.join(TEMP_DIR_PATH, potential_roots[0])
+
+            TESTS_DIRECTORY = project_root
+            print(f"Project uploaded and extracted. New tests directory set to: {TESTS_DIRECTORY}")
+
+            return jsonify({"success": True, "message": "Project uploaded successfully."}), 200
+        
+        except Exception as e:
+            return jsonify({"error": f"Failed to process zip file: {str(e)}"}), 500
+    
+    return jsonify({"error": "Invalid file type, please upload a .zip file"}), 400
+
+
 @app.route('/list-suites', methods=['GET'])
 def list_suites():
     """Scans the configured test directory and returns a list of suites and their test cases."""
+    if not TESTS_DIRECTORY:
+        return jsonify({"error": "No project has been uploaded or configured yet."}), 404
+
     if not os.path.isdir(TESTS_DIRECTORY):
         return jsonify({"error": f"Configured TESTS_DIRECTORY is not a valid directory: {TESTS_DIRECTORY}"}), 500
         
@@ -89,6 +141,9 @@ def list_suites():
 @app.route('/run', methods=['POST'])
 def run_robot_tests():
     global robot_process
+    if not TESTS_DIRECTORY:
+        return jsonify({"status": "error", "message": "Cannot run tests: No project has been uploaded."}), 400
+
     if robot_process and robot_process.poll() is None:
         return jsonify({"status": "error", "message": "Another execution is already in progress."}), 409
 
@@ -271,5 +326,7 @@ def delete_report(filename):
 
 if __name__ == '__main__':
     app.run(host='127.0.0.1', port=5001, debug=True)
+
+    
 
     

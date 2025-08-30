@@ -6,7 +6,6 @@ import { useToast } from "@/hooks/use-toast";
 import { CheckCircle2, FileCheck2, FileX2, XCircle } from 'lucide-react';
 import Papa from 'papaparse';
 import * as XLSX from 'xlsx';
-import JSZip from 'jszip';
 import type { TestSuite } from '@/components/dashboard/project-explorer';
 
 
@@ -50,6 +49,25 @@ interface ExecutionContextType {
 
 const ExecutionContext = createContext<ExecutionContextType | undefined>(undefined);
 
+const getInitialState = <T,>(key: string, defaultValue: T): T => {
+    if (typeof window === 'undefined') {
+        return defaultValue;
+    }
+    try {
+        const item = window.sessionStorage.getItem(key);
+        if (!item) return defaultValue;
+        if (item === 'null' || item === 'undefined') return defaultValue;
+        try {
+            return JSON.parse(item);
+        } catch {
+            return item as any;
+        }
+    } catch (error) {
+        console.warn(`Error reading sessionStorage key "${key}":`, error);
+        return defaultValue;
+    }
+};
+
 const fileToDataURL = (file: File): Promise<string> => {
     return new Promise((resolve, reject) => {
         const reader = new FileReader();
@@ -82,81 +100,6 @@ const dataURLtoBlob = (dataurl: string): Blob => {
 };
 
 
-const validateOrchestratorData = async (): Promise<string | null> => {
-    if (typeof window === 'undefined') return null;
-    const fileDataUrl = sessionStorage.getItem('dataFileContent');
-    const fileName = sessionStorage.getItem('dataFileName');
-    if (!fileDataUrl || !fileName) {
-        return 'No data file has been uploaded.';
-    }
-
-    try {
-        const blob = dataURLtoBlob(fileDataUrl);
-        let headers: string[] = [];
-        let data: any[] = [];
-
-        if (fileName.endsWith('.csv')) {
-            const text = await blob.text();
-            const result = Papa.parse(text, { header: true, skipEmptyLines: true });
-            headers = result.meta.fields || [];
-            data = result.data;
-        } else if (fileName.endsWith('.xlsx')) {
-            const arrayBuffer = await blob.arrayBuffer();
-            const wb = XLSX.read(arrayBuffer, { type: 'array' });
-            const wsname = wb.SheetNames[0];
-            const ws = wb.Sheets[wsname];
-            data = XLSX.utils.sheet_to_json(ws);
-            if (data.length > 0) {
-                headers = Object.keys(data[0]);
-            }
-        }
-        
-        const lowerCaseHeaders = headers.map(h => h.toLowerCase());
-        if (!lowerCaseHeaders.includes('id') || !lowerCaseHeaders.includes('priority')) {
-            return "Data file must contain 'id' and 'priority' columns.";
-        }
-
-        for (let i = 0; i < data.length; i++) {
-            const row = data[i];
-            const lowerCaseRowKeys = Object.keys(row).reduce((acc, key) => {
-                acc[key.toLowerCase()] = row[key];
-                return acc;
-            }, {} as any);
-
-            if (!lowerCaseRowKeys.id || !lowerCaseRowKeys.priority) {
-                return `Row ${i + 2} in your data file has missing 'id' or 'priority'. Please fix it in the Data Editor.`;
-            }
-        }
-
-        return null; // No errors
-    } catch (e) {
-        console.error("Validation error:", e);
-        return "Could not read or validate the data file. Please try uploading it again.";
-    }
-};
-
-const getInitialState = <T,>(key: string, defaultValue: T): T => {
-    if (typeof window === 'undefined') {
-        return defaultValue;
-    }
-    try {
-        const item = window.sessionStorage.getItem(key);
-        if (!item) return defaultValue;
-        // Check for 'null' or 'undefined' strings which can be saved by mistake
-        if (item === 'null' || item === 'undefined') return defaultValue;
-        try {
-            return JSON.parse(item);
-        } catch {
-            // If it's not JSON, return the raw string
-            return item as any;
-        }
-    } catch (error) {
-        console.warn(`Error reading sessionStorage key "${key}":`, error);
-        return defaultValue;
-    }
-};
-
-
 export function ExecutionProvider({ children }: { children: ReactNode }) {
   const [status, setStatus] = useState<ExecutionStatus>("idle");
   const [logs, setLogs] = useState<string[]>([]);
@@ -169,10 +112,8 @@ export function ExecutionProvider({ children }: { children: ReactNode }) {
   });
 
   const [projectFileName, setProjectFileName] = useState<string | null>(() => getInitialState('projectFileName', null));
-  const [projectFileContent, setProjectFileContent] = useState<string | null>(() => getInitialState('projectFileContent', null));
   const [dataFileName, setDataFileName] = useState<string | null>(() => getInitialState('dataFileName', null));
   const [dataFileContent, setDataFileContent] = useState<string | null>(() => getInitialState('dataFileContent', null));
-
   const [requirementsContent, setRequirementsContent] = useState<string | null>(() => getInitialState('requirementsContent', null));
 
   const [testSuites, setTestSuites] = useState<TestSuite[]>([]);
@@ -183,51 +124,42 @@ export function ExecutionProvider({ children }: { children: ReactNode }) {
   const [editedHeaders, setEditedHeaders] = useState<string[]>(() => getInitialState('editedHeaders', []));
 
   const { toast } = useToast();
-
-  useEffect(() => {
-    if (typeof window !== 'undefined') {
-      if (projectFileName) sessionStorage.setItem('projectFileName', projectFileName);
-      else sessionStorage.removeItem('projectFileName');
-    }
-  }, [projectFileName]);
   
   useEffect(() => {
-    if (typeof window !== 'undefined') {
-      if (projectFileContent) sessionStorage.setItem('projectFileContent', projectFileContent);
-      else sessionStorage.removeItem('projectFileContent');
+    sessionStorage.setItem('projectFileName', JSON.stringify(projectFileName));
+    sessionStorage.setItem('dataFileName', JSON.stringify(dataFileName));
+    sessionStorage.setItem('dataFileContent', JSON.stringify(dataFileContent));
+    sessionStorage.setItem('requirementsContent', JSON.stringify(requirementsContent));
+    sessionStorage.setItem('editedData', JSON.stringify(editedData));
+    sessionStorage.setItem('editedHeaders', JSON.stringify(editedHeaders));
+  }, [projectFileName, dataFileName, dataFileContent, requirementsContent, editedData, editedHeaders]);
+  
+  const fetchSuites = useCallback(async () => {
+    setIsLoadingSuites(true);
+    setSuiteLoadError(null);
+    try {
+        const response = await fetch('/api/list-suites');
+        if (!response.ok) {
+            const errorData = await response.json();
+            throw new Error(errorData.error || 'Failed to fetch suites from the backend.');
+        }
+        const suites = await response.json();
+        setTestSuites(suites);
+    } catch (e: any) {
+        console.error("Failed to fetch test suites:", e);
+        setTestSuites([]); // Clear suites on error
+        setSuiteLoadError(e.message || 'An unknown error occurred.');
+    } finally {
+        setIsLoadingSuites(false);
     }
-  }, [projectFileContent]);
+  }, []);
 
+  // Fetch suites on initial load if a project is already "loaded"
   useEffect(() => {
-    if (typeof window !== 'undefined') {
-      if (dataFileName) sessionStorage.setItem('dataFileName', dataFileName);
-      else sessionStorage.removeItem('dataFileName');
+    if (projectFileName) {
+        fetchSuites();
     }
-  }, [dataFileName]);
-
-  useEffect(() => {
-    if (typeof window !== 'undefined') {
-      if (dataFileContent) sessionStorage.setItem('dataFileContent', dataFileContent);
-      else sessionStorage.removeItem('dataFileContent');
-    }
-  }, [dataFileContent]);
-
-
-  useEffect(() => {
-    if (typeof window !== 'undefined') {
-      if (requirementsContent) sessionStorage.setItem('requirementsContent', requirementsContent);
-      else sessionStorage.removeItem('requirementsContent');
-    }
-  }, [requirementsContent]);
-
-
-  useEffect(() => {
-    if (typeof window !== 'undefined') {
-      sessionStorage.setItem('editedData', JSON.stringify(editedData));
-      sessionStorage.setItem('editedHeaders', JSON.stringify(editedHeaders));
-    }
-  }, [editedData, editedHeaders]);
-
+  }, [projectFileName, fetchSuites]);
 
   const addLog = useCallback((message: string) => {
     const timestamp = new Date().toLocaleTimeString();
@@ -254,7 +186,7 @@ export function ExecutionProvider({ children }: { children: ReactNode }) {
   ) => {
       if (typeof window !== 'undefined') {
           const newRun = {
-              id: `RUN-${new Date().getTime()}`, // Add unique ID
+              id: `RUN-${new Date().getTime()}`,
               suite: suiteName,
               status,
               duration,
@@ -282,28 +214,16 @@ export function ExecutionProvider({ children }: { children: ReactNode }) {
         case 'By Test Case':
             return `Test: ${runConfig.testcase || 'all'}`;
         case 'Orchestrator':
-            return 'Orchestrator Run';
+            return `Orchestrator Run: ${dataFileName || 'Unknown Data File'}`;
         case 'Run All':
             return 'Full Test Suite';
         default:
             return 'Unnamed Run';
     }
-  }, [runConfig]);
+  }, [runConfig, dataFileName]);
 
 
   const handleRun = useCallback(async (runType: string) => {
-    if (runType === 'Orchestrator') {
-        const validationError = await validateOrchestratorData();
-        if (validationError) {
-            toast({
-                variant: 'destructive',
-                title: 'Orchestrator Validation Failed',
-                description: validationError,
-            });
-            return;
-        }
-    }
-    
     setLogs([]);
     addLog(`Starting ${runType} execution...`);
     setStatus("running");
@@ -455,8 +375,9 @@ export function ExecutionProvider({ children }: { children: ReactNode }) {
 
   const clearProjectFile = useCallback(() => {
     setProjectFileName(null);
-    setProjectFileContent(null);
     setRequirementsContent(null);
+    setTestSuites([]);
+    setSuiteLoadError(null);
     toast({ title: 'Project Cleared' });
   }, [toast]);
 
@@ -508,95 +429,48 @@ export function ExecutionProvider({ children }: { children: ReactNode }) {
       return;
     }
   
-    setRequirementsContent(null);
-    setProjectFileName(file.name); // Optimistically set name
+    setProjectFileName(file.name);
+    setTestSuites([]);
+    setSuiteLoadError(null);
+    setIsLoadingSuites(true);
   
     try {
-      const arrayBuffer = await readFileAsArrayBuffer(file);
-      // Store the project file content if needed, for now we process directly
-      // const dataUrl = `data:${file.type};base64,${Buffer.from(arrayBuffer).toString('base64')}`;
-      // setProjectFileContent(dataUrl);
+      const formData = new FormData();
+      formData.append('project', file);
+
+      const response = await fetch('/api/upload-project', {
+        method: 'POST',
+        body: formData,
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || "Failed to upload project to backend.");
+      }
       
       toast({
         title: 'Project Uploaded Successfully',
-        description: file.name,
+        description: `${file.name} is now active on the backend.`,
         action: <FileCheck2 className="text-green-500" />,
       });
-  
-      const zip = await JSZip.loadAsync(arrayBuffer);
-      let reqFileEntry: JSZip.JSZipObject | null = null;
-  
-      zip.forEach((relativePath, zipEntry) => {
-        if (relativePath.endsWith('requirements.txt') && !zipEntry.dir) {
-          reqFileEntry = zipEntry;
-        }
-      });
-  
-      if (reqFileEntry) {
-        const content = await reqFileEntry.async('string');
-        setRequirementsContent(content);
-        toast({
-          title: 'Found requirements.txt',
-          description: "Dependencies are ready to be scanned.",
-        });
-      } else {
-        toast({
-          variant: 'default',
-          title: 'No requirements.txt found',
-          description: "The uploaded project does not contain a requirements.txt file.",
-        });
-      }
-      
-      // Auto-load data file from zip ONLY if one isn't already loaded
-      if (!dataFileName) {
-        let dataFileEntry: JSZip.JSZipObject | null = null;
-        zip.forEach((relativePath, zipEntry) => {
-          if ((relativePath.toLowerCase().endsWith('.csv') || relativePath.toLowerCase().endsWith('.xlsx')) && !zipEntry.dir) {
-            if (!dataFileEntry) { // Take the first one found
-              dataFileEntry = zipEntry;
-            }
-          }
-        });
-        
-        if (dataFileEntry) {
-          const content = await dataFileEntry.async('blob');
-          const foundDataFile = new File([content], dataFileEntry.name, { type: content.type });
-          await handleDataFileUpload(foundDataFile);
-        }
-      }
-  
+
+      // After successful upload, fetch the suites from the backend
+      await fetchSuites();
+
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
-      console.error("Error reading zip file:", errorMessage);
+      console.error("Error uploading project:", errorMessage);
       toast({
         variant: 'destructive',
         title: 'Error Processing Project',
-        description: `Could not read the zip file. It may be corrupt. Error: ${errorMessage}`,
+        description: `Could not process the project file. Error: ${errorMessage}`,
       });
       clearProjectFile();
-    }
-  }, [clearProjectFile, dataFileName, handleDataFileUpload, toast]);
-  
-  
-  const fetchSuites = useCallback(async () => {
-    setIsLoadingSuites(true);
-    setSuiteLoadError(null);
-    try {
-        const response = await fetch('/api/list-suites');
-        if (!response.ok) {
-            const errorData = await response.json();
-            throw new Error(errorData.error || 'Failed to fetch suites from the backend.');
-        }
-        const suites = await response.json();
-        setTestSuites(suites);
-    } catch (e: any) {
-        console.error("Failed to fetch test suites:", e);
-        setSuiteLoadError(e.message || 'An unknown error occurred.');
     } finally {
         setIsLoadingSuites(false);
     }
-  }, []);
-
+  }, [clearProjectFile, fetchSuites, toast]);
+  
   const value = {
     status,
     logs,
@@ -637,3 +511,5 @@ export function useExecutionContext() {
   }
   return context;
 }
+
+    
