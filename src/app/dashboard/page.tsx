@@ -1,7 +1,7 @@
 
 "use client";
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect } from 'react';
 import {
   Card,
   CardContent,
@@ -33,43 +33,14 @@ type RecentRun = {
 export default function DashboardPageContent() {
   const [recentRuns, setRecentRuns] = useState<RecentRun[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [projectFile, setProjectFile] = useState<File | null>(null);
-
+  
   const [stats, setStats] = useState({
     totalRuns: 0,
     passRate: 'N/A',
     avgDuration: '--',
+    activeProjectName: 'Not Configured'
   });
   
-  useEffect(() => {
-    // Restore project file state from sessionStorage
-    const storedProjectFileName = sessionStorage.getItem('uploadedProjectFileName');
-    if (storedProjectFileName) {
-      // Create a dummy file to represent the state
-      const dummyFile = new File([], storedProjectFileName, { type: 'application/zip' });
-      setProjectFile(dummyFile);
-    }
-
-    const handleStorageChange = () => {
-        const storedProjectFileName = sessionStorage.getItem('uploadedProjectFileName');
-        if (storedProjectFileName) {
-            const dummyFile = new File([], storedProjectFileName, { type: 'application/zip' });
-            setProjectFile(dummyFile);
-        } else {
-            setProjectFile(null);
-        }
-    };
-    
-    window.addEventListener('storage', handleStorageChange);
-    window.addEventListener('projectUpdated', handleStorageChange);
-
-    return () => {
-        window.removeEventListener('storage', handleStorageChange);
-        window.removeEventListener('projectUpdated', handleStorageChange);
-    };
-
-  }, []);
-
   const loadRunHistory = () => {
     const loadData = async () => {
         setIsLoading(true);
@@ -92,18 +63,18 @@ export default function DashboardPageContent() {
                 }, 0);
                 const avgDuration = totalRuns > 0 ? (totalDuration / totalRuns).toFixed(2) + 's' : '--';
       
-                setStats({ totalRuns, passRate, avgDuration });
+                setStats(prev => ({ ...prev, totalRuns, passRate, avgDuration }));
               } else {
-                 setStats({ totalRuns: 0, passRate: 'N/A', avgDuration: '--' });
+                 setStats(prev => ({ ...prev, totalRuns: 0, passRate: 'N/A', avgDuration: '--' }));
                  setRecentRuns([]);
               }
             } else {
-              setStats({ totalRuns: 0, passRate: 'N/A', avgDuration: '--' });
+              setStats(prev => ({ ...prev, totalRuns: 0, passRate: 'N/A', avgDuration: '--' }));
               setRecentRuns([]);
             }
           } catch (e) {
             console.error("Failed to parse run history from localStorage", e);
-            setStats({ totalRuns: 0, passRate: 'N-A', avgDuration: '--' });
+            setStats(prev => ({ ...prev, totalRuns: 0, passRate: 'N-A', avgDuration: '--' }));
             setRecentRuns([]);
           }
         }
@@ -160,14 +131,14 @@ export default function DashboardPageContent() {
           <Card>
             <CardHeader className="pb-2">
               <CardDescription>Active Project</CardDescription>
-               <CardTitle className="font-headline text-3xl truncate" title={projectFile?.name || "None"}>
-                {projectFile ? 'Loaded' : 'None'}
+               <CardTitle className="font-headline text-3xl truncate" title={stats.activeProjectName}>
+                 Configured
               </CardTitle>
             </CardHeader>
             <CardContent>
               <div className="text-xs text-muted-foreground">
                  <Link href="/dashboard/project-explorer" className="hover:underline">
-                    Manage your project &rarr;
+                    View project files &rarr;
                  </Link>
               </div>
             </CardContent>

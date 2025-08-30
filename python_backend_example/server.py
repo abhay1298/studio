@@ -30,6 +30,62 @@ if not os.path.exists(REPORTS_DIR):
     os.makedirs(REPORTS_DIR)
 
 
+# --- IMPORTANT: CONFIGURE YOUR TEST DIRECTORY ---
+# This is the path to your Robot Framework tests.
+# You MUST change this path to point to your actual test suite.
+# It should be the absolute path to the directory containing your .robot files.
+TESTS_DIRECTORY = r'C:\Users\c-aku\robotFramework\robotFramework\pythonProject\Test'
+
+def parse_robot_file(file_path):
+    """Parses a .robot file to extract test case names."""
+    test_cases = []
+    in_test_cases_section = False
+    try:
+        with open(file_path, 'r', encoding='utf-8') as f:
+            for line in f:
+                stripped_line = line.strip()
+                if stripped_line.lower().startswith('*** test cases ***'):
+                    in_test_cases_section = True
+                    continue
+                if stripped_line.lower().startswith('***'):
+                    in_test_cases_section = False
+                    continue
+                
+                if in_test_cases_section and stripped_line and not stripped_line.startswith('#') and not stripped_line.startswith('[') and not line.startswith((' ', '\t')):
+                    # This is a basic heuristic: a line that is not a comment, not a setting, and not indented.
+                    test_cases.append(stripped_line)
+    except Exception as e:
+        print(f"Could not parse file {file_path}: {e}")
+    return test_cases
+
+
+@app.route('/list-suites', methods=['GET'])
+def list_suites():
+    """Scans the configured test directory and returns a list of suites and their test cases."""
+    if not os.path.isdir(TESTS_DIRECTORY):
+        return jsonify({"error": f"Configured TESTS_DIRECTORY is not a valid directory: {TESTS_DIRECTORY}"}), 500
+        
+    suites = []
+    try:
+        for root, _, files in os.walk(TESTS_DIRECTORY):
+            for file in files:
+                if file.endswith('.robot'):
+                    file_path = os.path.join(root, file)
+                    # Create a relative name for the suite to show in the UI
+                    relative_path = os.path.relpath(file_path, TESTS_DIRECTORY)
+                    test_cases = parse_robot_file(file_path)
+                    if test_cases:
+                        suites.append({
+                            "name": relative_path.replace('\\', '/'), # Normalize path for UI
+                            "testCases": test_cases
+                        })
+        # Sort suites alphabetically by name
+        suites.sort(key=lambda x: x['name'])
+        return jsonify(suites)
+    except Exception as e:
+        return jsonify({"error": f"Failed to scan for suites: {str(e)}"}), 500
+
+
 @app.route('/run', methods=['POST'])
 def run_robot_tests():
     global robot_process
@@ -44,10 +100,7 @@ def run_robot_tests():
         runType = data.get('runType')
         config = data.get('config', {})
         
-        # --- IMPORTANT: CONFIGURE YOUR TEST DIRECTORY ---
-        # This is the path to your Robot Framework tests.
-        # You MUST change this path to point to your actual test suite.
-        tests_directory = r'C:\Users\c-aku\robotFramework\robotFramework\pythonProject\Test'
+        tests_directory = TESTS_DIRECTORY
 
         # --- Command Construction (Real) ---
         command = ['robot']
@@ -62,11 +115,15 @@ def run_robot_tests():
             if config.get('excludeTags'):
                 command.extend(['-e', config['excludeTags']])
         elif runType == 'By Suite' and config.get('suite'):
-            command.extend(['-s', config['suite']])
+            # When running by suite, we need to construct the full path to the suite file
+            suite_path = os.path.join(tests_directory, config['suite'].replace('/', os.sep))
+            command.append(suite_path)
+            tests_directory = None # Unset this so it's not appended again
         elif runType == 'By Test Case' and config.get('testcase'):
             command.extend(['-t', config['testcase']])
         
-        command.append(tests_directory)
+        if tests_directory:
+            command.append(tests_directory)
             
         print(f"--- Preparing Real Execution ---")
         print(f"Constructed Command: {' '.join(command)}")
@@ -117,13 +174,14 @@ def run_robot_tests():
                 logs.append(f"Successfully archived log to {log_file}")
 
             # Archive video file
-            for f in os.listdir(output_dir):
-                if f.lower().endswith('.avi'):
-                    temp_video_path = os.path.join(output_dir, f)
-                    video_file = f"video-{timestamp}.avi"
-                    shutil.move(temp_video_path, os.path.join(REPORTS_DIR, video_file))
-                    logs.append(f"Successfully archived video to {video_file}")
-                    break # Assume only one video per run
+            if os.path.exists(output_dir):
+                for f in os.listdir(output_dir):
+                    if f.lower().endswith('.avi'):
+                        temp_video_path = os.path.join(output_dir, f)
+                        video_file = f"video-{timestamp}.avi"
+                        shutil.move(temp_video_path, os.path.join(REPORTS_DIR, video_file))
+                        logs.append(f"Successfully archived video to {video_file}")
+                        break # Assume only one video per run
 
             # Clean up other output files if necessary
             if os.path.exists(output_dir):
