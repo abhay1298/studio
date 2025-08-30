@@ -19,7 +19,7 @@ import {
 } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Download, Eye, Ban, Trash2, Loader2, ServerCrash, RefreshCw } from 'lucide-react';
+import { Download, Eye, Ban, Trash2, Loader2, ServerCrash, RefreshCw, Clapperboard } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import Link from 'next/link';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -36,6 +36,7 @@ type Report = {
   duration: string;
   reportFile: string | null;
   logFile: string | null;
+  videoFile: string | null;
 };
 
 export default function ReportsPage() {
@@ -62,6 +63,7 @@ export default function ReportsPage() {
             fail: run.fail,
             reportFile: run.reportFile || null,
             logFile: run.logFile || null,
+            videoFile: run.videoFile || null,
           })).reverse();
           setReports(formattedReports);
         }
@@ -90,14 +92,14 @@ export default function ReportsPage() {
 
   }, []);
 
-  const handleViewReport = (report: Report) => {
-    if (report.reportFile) {
-      window.open(`/api/get-report/${report.reportFile}`, '_blank');
+  const handleViewFile = (file: string | null) => {
+    if (file) {
+      window.open(`/api/get-report/${file}`, '_blank');
     } else {
       toast({
         variant: 'destructive',
-        title: 'Report Not Available',
-        description: 'The HTML report for this run was not generated or archived.',
+        title: 'File Not Available',
+        description: 'The requested file was not generated or archived for this run.',
       });
     }
   };
@@ -135,8 +137,11 @@ export default function ReportsPage() {
         if (reportToDelete.logFile) {
             await fetch(`/api/delete-report/${reportToDelete.logFile}`, { method: 'DELETE' });
         }
+         if (reportToDelete.videoFile) {
+            await fetch(`/api/delete-report/${reportToDelete.videoFile}`, { method: 'DELETE' });
+        }
 
-        toast({ title: 'Run Deleted', description: 'The run and its associated reports have been removed.' });
+        toast({ title: 'Run Deleted', description: 'The run and its associated artifacts have been removed.' });
         
     } catch (e) {
         console.error("Failed to delete run:", e);
@@ -178,7 +183,7 @@ export default function ReportsPage() {
         <CardHeader>
           <CardTitle className="font-headline">Execution History</CardTitle>
           <CardDescription>
-            Browse, view, and download detailed HTML reports for all past test executions.
+            Browse, view, and download detailed HTML reports and video recordings for all past test executions.
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -204,7 +209,7 @@ export default function ReportsPage() {
                     <TableCell><Skeleton className="h-5 w-16" /></TableCell>
                     <TableCell className="text-center"><Skeleton className="h-5 w-8 mx-auto" /></TableCell>
                     <TableCell className="text-center"><Skeleton className="h-5 w-8 mx-auto" /></TableCell>
-                    <TableCell className="text-right"><Skeleton className="h-8 w-32 ml-auto" /></TableCell>
+                    <TableCell className="text-right"><Skeleton className="h-8 w-40 ml-auto" /></TableCell>
                   </TableRow>
                 ))
               ) : reports.length > 0 ? (
@@ -231,14 +236,14 @@ export default function ReportsPage() {
                     <TableCell className="text-center text-red-600 dark:text-red-500 font-medium">
                         {report.fail}
                     </TableCell>
-                    <TableCell className="text-right">
-                        <Button variant="outline" size="icon" className="mr-2" onClick={() => handleViewReport(report)} disabled={!report.reportFile}>
+                    <TableCell className="text-right space-x-2">
+                        <Button variant="outline" size="icon" onClick={() => handleViewFile(report.reportFile)} disabled={!report.reportFile}>
                             <Eye className="h-4 w-4" />
                             <span className="sr-only">View Report</span>
                         </Button>
-                        <Button variant="outline" size="icon" className="mr-2" onClick={() => handleDownload(report, 'report')} disabled={!report.reportFile}>
-                            <Download className="h-4 w-4" />
-                            <span className="sr-only">Download HTML Report</span>
+                         <Button variant="outline" size="icon" onClick={() => handleViewFile(report.videoFile)} disabled={!report.videoFile}>
+                            <Clapperboard className="h-4 w-4" />
+                            <span className="sr-only">View Video</span>
                         </Button>
                          <AlertDialog>
                             <AlertDialogTrigger asChild>
@@ -251,7 +256,7 @@ export default function ReportsPage() {
                                 <AlertDialogHeader>
                                 <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
                                 <AlertDialogDescription>
-                                    This action will permanently delete this run history and its associated log and report files. This cannot be undone.
+                                    This action will permanently delete this run history and its associated log, report, and video files. This cannot be undone.
                                 </AlertDialogDescription>
                                 </AlertDialogHeader>
                                 <AlertDialogFooter>
@@ -283,3 +288,5 @@ export default function ReportsPage() {
     </div>
   );
 }
+
+    

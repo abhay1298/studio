@@ -98,9 +98,11 @@ def run_robot_tests():
             
         report_file = None
         log_file = None
+        video_file = None
 
-        # Archive reports
+        # Archive reports and video
         try:
+            # Archive HTML reports
             temp_report_path = os.path.join(output_dir, 'report.html')
             temp_log_path = os.path.join(output_dir, 'log.html')
 
@@ -113,13 +115,22 @@ def run_robot_tests():
                 log_file = f"log-{timestamp}.html"
                 shutil.move(temp_log_path, os.path.join(REPORTS_DIR, log_file))
                 logs.append(f"Successfully archived log to {log_file}")
-            
+
+            # Archive video file
+            for f in os.listdir(output_dir):
+                if f.lower().endswith('.mp4'):
+                    temp_video_path = os.path.join(output_dir, f)
+                    video_file = f"video-{timestamp}.mp4"
+                    shutil.move(temp_video_path, os.path.join(REPORTS_DIR, video_file))
+                    logs.append(f"Successfully archived video to {video_file}")
+                    break # Assume only one video per run
+
             # Clean up other output files if necessary
             if os.path.exists(output_dir):
                 shutil.rmtree(output_dir)
 
         except Exception as e:
-            logs.append(f"\nError archiving reports: {e}")
+            logs.append(f"\nError archiving reports or video: {e}")
 
         status = 'success' if returncode == 0 else 'failed'
         logs.append(f"\nExecution Result: {status.upper()} (Exit Code {returncode})")
@@ -141,7 +152,8 @@ def run_robot_tests():
             "pass_count": pass_count,
             "fail_count": fail_count,
             "reportFile": report_file,
-            "logFile": log_file
+            "logFile": log_file,
+            "videoFile": video_file
         })
 
     except Exception as e:
@@ -201,3 +213,5 @@ def delete_report(filename):
 
 if __name__ == '__main__':
     app.run(host='127.0.0.1', port=5001, debug=True)
+
+    
