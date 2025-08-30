@@ -11,6 +11,9 @@ import {
   PlayCircle,
   Settings,
   Users,
+  Bot,
+  CheckCircle2,
+  Sparkles,
 } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
@@ -79,11 +82,60 @@ export function DashboardHeader() {
         </div>
         <div className="flex items-center gap-2">
           <ThemeToggle />
-          <Button variant="ghost" size="icon" className="relative">
-              <Bell className="h-5 w-5" />
-              <span className="absolute top-1 right-1.5 h-2 w-2 rounded-full bg-accent" />
-              <span className="sr-only">Toggle notifications</span>
-          </Button>
+           <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+                <Button variant="ghost" size="icon" className="relative">
+                    <Bell className="h-5 w-5" />
+                    <span className="absolute top-1 right-1.5 h-2 w-2 rounded-full bg-accent" />
+                    <span className="sr-only">Toggle notifications</span>
+                </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-80">
+                <DropdownMenuLabel>Notifications</DropdownMenuLabel>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem>
+                <div className="flex items-start gap-3">
+                    <div className="mt-1 bg-primary/10 rounded-full p-2">
+                    <Bot className="h-4 w-4 text-primary"/>
+                    </div>
+                    <div>
+                    <p className="font-medium">Welcome to Robot Maestro!</p>
+                    <p className="text-xs text-muted-foreground">
+                        Explore the dashboard to get started.
+                    </p>
+                    </div>
+                </div>
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem>
+                <div className="flex items-start gap-3">
+                    <div className="mt-1 bg-green-500/10 rounded-full p-2">
+                    <CheckCircle2 className="h-4 w-4 text-green-600"/>
+                    </div>
+                    <div>
+                    <p className="font-medium">Test Run Success</p>
+                    <p className="text-xs text-muted-foreground">
+                        'Login tests' suite completed in 45s.
+                    </p>
+                    </div>
+                </div>
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem>
+                <div className="flex items-start gap-3">
+                    <div className="mt-1 bg-accent/10 rounded-full p-2">
+                    <Sparkles className="h-4 w-4 text-accent"/>
+                    </div>
+                    <div>
+                    <p className="font-medium">New Feature: AI Analysis</p>
+                    <p className="text-xs text-muted-foreground">
+                        Analyze failed test runs with AI.
+                    </p>
+                    </div>
+                </div>
+                </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button variant="secondary" size="icon" className="rounded-full">
