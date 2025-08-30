@@ -42,6 +42,14 @@ export default function DashboardPageContent() {
     avgDuration: '--',
   });
 
+  useEffect(() => {
+    // Restore project file state from sessionStorage
+    const storedProjectFileName = sessionStorage.getItem('uploadedProjectFileName');
+    if (storedProjectFileName) {
+      setProjectFile(new File([], storedProjectFileName, { type: 'application/zip' }));
+    }
+  }, []);
+
   const loadRunHistory = () => {
     // This function will now be async to avoid blocking render
     const loadData = async () => {

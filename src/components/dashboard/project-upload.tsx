@@ -2,7 +2,7 @@
 "use client";
 
 import * as React from 'react';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   Card,
@@ -42,6 +42,22 @@ export function ProjectUpload({ onProjectFileChange }: ProjectUploadProps) {
   const [gitUrl, setGitUrl] = useState('');
   const [isCloning, setIsCloning] = useState(false);
 
+  useEffect(() => {
+    // Restore state from sessionStorage on component mount
+    const storedProjectFileName = sessionStorage.getItem('uploadedProjectFileName');
+    if (storedProjectFileName) {
+        const dummyFile = new File([], storedProjectFileName, { type: 'application/zip'});
+        setProjectFile(dummyFile);
+        onProjectFileChange(dummyFile);
+    }
+    const storedDataFileName = sessionStorage.getItem('uploadedDataFileName');
+    if (storedDataFileName) {
+        const dummyDataFile = new File([], storedDataFileName, { type: 'text/csv' });
+        setDataFile(dummyDataFile);
+    }
+  }, [onProjectFileChange]);
+
+
   // This function will be called to simulate loading a data file
   const autoLoadDataFile = (foundFile: File) => {
     setDataFile(foundFile);
@@ -71,6 +87,7 @@ export function ProjectUpload({ onProjectFileChange }: ProjectUploadProps) {
       if (fileType === 'project') {
         onProjectFileChange(null);
         setProjectFile(null);
+        sessionStorage.removeItem('uploadedProjectFileName');
       }
       if (fileType === 'data') {
         setDataFile(null);
@@ -96,6 +113,7 @@ export function ProjectUpload({ onProjectFileChange }: ProjectUploadProps) {
         isValid = true;
         setProjectFile(file);
         onProjectFileChange(file);
+        sessionStorage.setItem('uploadedProjectFileName', file.name);
         // SIMULATION: Check if project contains a data file
         if (file.name.includes("with-data")) {
             const mockData = createMockDataFile();
@@ -104,6 +122,7 @@ export function ProjectUpload({ onProjectFileChange }: ProjectUploadProps) {
       } else {
         onProjectFileChange(null);
         setProjectFile(null);
+        sessionStorage.removeItem('uploadedProjectFileName');
       }
     } else if (fileType === 'data') {
       if (allowedDataTypes.includes(file.type)) {
@@ -173,6 +192,7 @@ export function ProjectUpload({ onProjectFileChange }: ProjectUploadProps) {
         const dummyFile = new File([], `${repoName}.zip`, { type: 'application/zip'});
         setProjectFile(dummyFile);
         onProjectFileChange(dummyFile);
+        sessionStorage.setItem('uploadedProjectFileName', dummyFile.name);
         toast({
             title: 'Repository Cloned',
             description: `Successfully imported project from '${repoName}'.`,
@@ -191,6 +211,7 @@ export function ProjectUpload({ onProjectFileChange }: ProjectUploadProps) {
   const handleClearProject = () => {
     setProjectFile(null);
     onProjectFileChange(null);
+    sessionStorage.removeItem('uploadedProjectFileName');
     toast({
         title: 'Project Cleared',
         description: 'The active project has been unloaded.',
