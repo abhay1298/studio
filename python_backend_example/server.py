@@ -32,7 +32,7 @@ def run_robot_tests():
         # This is the path to your Robot Framework tests.
         # For this example, we assume there's a 'tests' folder sibling to the `python_backend_example` directory.
         # You MUST change this path to point to your actual test suite.
-        tests_directory = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'tests'))
+        tests_directory = r'C:\Users\c-aku\robotFramework\robotFramework\pythonProject\Test'
 
 
         # --- Command Construction (Real) ---
