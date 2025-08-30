@@ -81,7 +81,7 @@ export default function HelpPage() {
                 <p className="text-muted-foreground mb-2">
                   In your new terminal, install the required Python libraries:
                 </p>
-                <pre className="bg-muted p-2 rounded-md font-mono text-sm">pip install Flask robotframework</pre>
+                <pre className="bg-muted p-2 rounded-md font-mono text-sm">pip install Flask Flask-Cors robotframework</pre>
               </div>
             </div>
              <div className="flex items-start gap-4">
