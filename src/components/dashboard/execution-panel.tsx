@@ -22,12 +22,13 @@ import {
   Loader2,
   XCircle,
   Trash2,
+  StopCircle,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { Alert, AlertDescription, AlertTitle } from "../ui/alert";
 import { AiAnalysisDialog } from "./ai-analysis-dialog";
 
-type ExecutionStatus = "idle" | "running" | "success" | "failed";
+type ExecutionStatus = "idle" | "running" | "success" | "failed" | "stopped";
 
 export function ExecutionPanel() {
   const [status, setStatus] = useState<ExecutionStatus>("idle");
@@ -71,7 +72,7 @@ export function ExecutionPanel() {
 
   const saveRunToHistory = (
     suiteName: string, 
-    status: 'Success' | 'Failed', 
+    status: 'Success' | 'Failed' | 'Stopped', 
     duration: string, 
     passCount: number, 
     failCount: number
@@ -139,16 +140,19 @@ export function ExecutionPanel() {
       const suiteName = getSuiteNameForRun(runType);
 
       if (!response.ok) {
-        const result = await response.json();
-        const errorMessage = result.message || 'The execution server returned an error.';
-        addLog(`Execution failed: ${errorMessage}`);
-        setStatus("failed");
-        saveRunToHistory(suiteName, 'Failed', duration, 0, 1);
-        toast({
-            variant: "destructive",
-            title: "Execution Error",
-            description: errorMessage,
-        });
+        // If the request was aborted, the status will not be "running" anymore.
+        if (status === "running") {
+            const result = await response.json();
+            const errorMessage = result.message || 'The execution server returned an error.';
+            addLog(`Execution failed: ${errorMessage}`);
+            setStatus("failed");
+            saveRunToHistory(suiteName, 'Failed', duration, 0, 1);
+            toast({
+                variant: "destructive",
+                title: "Execution Error",
+                description: errorMessage,
+            });
+        }
         return;
       }
       
@@ -181,6 +185,10 @@ export function ExecutionPanel() {
       }
 
     } catch (error) {
+      if (status !== 'running') {
+        // This means the process was stopped, so we don't show an error.
+        return;
+      }
       const endTime = Date.now();
       const duration = ((endTime - startTime) / 1000).toFixed(2) + 's';
       const suiteName = getSuiteNameForRun(runType);
@@ -203,6 +211,31 @@ export function ExecutionPanel() {
       });
     }
   };
+
+  const handleStop = async () => {
+    addLog('Attempting to stop execution...');
+    try {
+        const response = await fetch('/api/stop-tests', { method: 'POST' });
+        if (!response.ok) {
+            throw new Error('Server responded with an error.');
+        }
+        const result = await response.json();
+        addLog(result.message);
+        setStatus('stopped');
+        toast({
+            title: "Execution Stopped",
+            description: "The test run has been terminated.",
+        });
+
+    } catch (e) {
+        addLog('Failed to stop execution. It may have already completed.');
+        toast({
+            variant: "destructive",
+            title: "Stop Failed",
+            description: "Could not stop the test run. Check the backend server.",
+        });
+    }
+  };
   
   const handleDownloadLogs = () => {
     const logContent = logs.join('\n');
@@ -223,10 +256,10 @@ export function ExecutionPanel() {
       <Tabs defaultValue="tag">
         <CardHeader>
           <TabsList className="grid w-full grid-cols-4">
-            <TabsTrigger value="tag">By Tag</TabsTrigger>
-            <TabsTrigger value="suite">By Suite</TabsTrigger>
-            <TabsTrigger value="testcase">By Test Case</TabsTrigger>
-            <TabsTrigger value="orchestrator">Orchestrator</TabsTrigger>
+            <TabsTrigger value="tag" disabled={isRunning}>By Tag</TabsTrigger>
+            <TabsTrigger value="suite" disabled={isRunning}>By Suite</TabsTrigger>
+            <TabsTrigger value="testcase" disabled={isRunning}>By Test Case</TabsTrigger>
+            <TabsTrigger value="orchestrator" disabled={isRunning}>Orchestrator</TabsTrigger>
           </TabsList>
         </CardHeader>
 
@@ -300,12 +333,21 @@ export function ExecutionPanel() {
               {status === "running" && <Loader2 className="h-5 w-5 animate-spin" />}
               {status === "success" && <CheckCircle2 className="h-5 w-5 text-green-500" />}
               {status === "failed" && <XCircle className="h-5 w-5 text-destructive" />}
+              {status === "stopped" && <StopCircle className="h-5 w-5 text-yellow-500" />}
               <span className="text-sm font-medium">
                 Status: {status.charAt(0).toUpperCase() + status.slice(1)}
               </span>
             </div>
             <div className="flex gap-2">
                 {status === 'failed' && <AiAnalysisDialog logs={lastFailedLogs} />}
+                
+                {isRunning && (
+                    <Button variant="destructive" onClick={handleStop} disabled={!isRunning}>
+                        <StopCircle className="mr-2 h-4 w-4" />
+                        Stop
+                    </Button>
+                )}
+                
                 <Button variant="outline" onClick={() => setLogs([])} disabled={isRunning || logs.length === 0}>
                     <Trash2 className="mr-2 h-4 w-4" />
                     Clear Logs

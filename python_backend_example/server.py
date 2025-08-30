@@ -5,6 +5,7 @@ import subprocess
 import time
 import random
 import os
+import signal
 
 app = Flask(__name__)
 CORS(app) # Enable CORS for all routes
@@ -18,8 +19,15 @@ CORS(app) # Enable CORS for all routes
 #    in a location accessible to this server. You might need to adjust paths.
 # 3. This server still simulates pass/fail counts for UI purposes.
 
+# Global variable to hold the running process
+robot_process = None
+
 @app.route('/run', methods=['POST'])
 def run_robot_tests():
+    global robot_process
+    if robot_process and robot_process.poll() is None:
+        return jsonify({"status": "error", "message": "Another execution is already in progress."}), 409
+
     try:
         data = request.get_json()
         if not data:
@@ -63,12 +71,18 @@ def run_robot_tests():
         # --- Real Execution using subprocess ---
         # We use Popen to allow for capturing output in real-time if needed,
         # but for simplicity, we'll use `run` which waits for completion.
-        process = subprocess.run(
+        # Using Popen now to allow for termination.
+        robot_process = subprocess.Popen(
             command,
-            capture_output=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
             text=True, # Decodes stdout/stderr as text
-            check=False # Prevents raising an exception on non-zero exit codes
+            creationflags=subprocess.CREATE_NEW_PROCESS_GROUP if os.name == 'nt' else 0
         )
+        
+        stdout, stderr = robot_process.communicate() # waits for process to finish
+        returncode = robot_process.poll()
+        robot_process = None # Clear the process variable
 
         logs = []
         logs.append("==============================================================================")
@@ -76,29 +90,29 @@ def run_robot_tests():
         logs.append("==============================================================================")
         
         # Append actual stdout and stderr from the command
-        if process.stdout:
+        if stdout:
             logs.append("\n--- STDOUT ---\n")
-            logs.append(process.stdout)
-        if process.stderr:
+            logs.append(stdout)
+        if stderr:
             logs.append("\n--- STDERR ---\n")
-            logs.append(process.stderr)
+            logs.append(stderr)
 
         # Determine status from the return code
-        if process.returncode == 0:
+        if returncode == 0:
             status = 'success'
             logs.append("\nExecution Result: SUCCESS (Exit Code 0)")
         else:
             status = 'failed'
-            logs.append(f"\nExecution Result: FAILED (Exit Code {process.returncode})")
+            logs.append(f"\nExecution Result: FAILED (Exit Code {returncode})")
             # If the command failed because robot isn't installed, provide a helpful message
-            if "not found" in process.stderr.lower() or "is not recognized" in process.stderr.lower():
+            if "not found" in stderr.lower() or "is not recognized" in stderr.lower():
                 logs.append("\n[HINT]: The 'robot' command was not found. Is Robot Framework installed in the Python environment running this server?")
 
 
         # --- Pass/Fail Count Simulation (for UI) ---
         # A real implementation would parse the output.xml from Robot Framework
         # to get the exact counts. This is a placeholder for that logic.
-        output_text = process.stdout + process.stderr
+        output_text = stdout + stderr
         pass_count = output_text.count('| PASS |')
         fail_count = output_text.count('| FAIL |')
         
@@ -119,7 +133,30 @@ def run_robot_tests():
 
     except Exception as e:
         print(f"A critical error occurred in the Flask server: {e}")
+        robot_process = None
         return jsonify({"status": "error", "message": str(e)}), 500
+
+@app.route('/stop', methods=['POST'])
+def stop_robot_tests():
+    global robot_process
+    if robot_process and robot_process.poll() is None:
+        try:
+            print(f"--- Terminating Process PID: {robot_process.pid} ---")
+            # For Windows, we need to use a different method to kill the process group
+            if os.name == 'nt':
+                 os.kill(robot_process.pid, signal.CTRL_C_EVENT)
+            else: # For Linux/macOS
+                 os.killpg(os.getpgid(robot_process.pid), signal.SIGTERM)
+            
+            robot_process.wait(timeout=5) # Wait for the process to terminate
+            robot_process = None
+            return jsonify({"status": "success", "message": "Execution stopped successfully."}), 200
+        except Exception as e:
+            print(f"Error stopping process: {e}")
+            return jsonify({"status": "error", "message": f"Failed to stop process: {e}"}), 500
+    else:
+        return jsonify({"status": "info", "message": "No execution running to stop."}), 200
+
 
 if __name__ == '__main__':
     # It's recommended to run Flask with a production-ready WSGI server like Gunicorn or Waitress.
