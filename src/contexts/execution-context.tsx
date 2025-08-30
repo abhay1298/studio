@@ -1,4 +1,5 @@
 
+
 "use client";
 
 import { createContext, useContext, useState, useCallback, ReactNode, useEffect, Dispatch, SetStateAction } from 'react';
@@ -52,7 +53,10 @@ const fileToDataURL = (file: File): Promise<string> => {
     return new Promise((resolve, reject) => {
         const reader = new FileReader();
         reader.onload = () => resolve(reader.result as string);
-        reader.onerror = error => reject(error);
+        reader.onerror = () => {
+            const error = reader.error;
+            reject(new Error(`Failed to read file: ${error ? error.message : 'Unknown error'}`));
+        };
         reader.readAsDataURL(file);
     });
 };
