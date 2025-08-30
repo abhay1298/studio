@@ -311,7 +311,7 @@ export function DataFileEditor() {
             <UploadCloud className="h-4 w-4" />
             <AlertTitle>No Data File Uploaded</AlertTitle>
             <AlertDescription>
-                Please go to the <a href="/dashboard" className="font-medium text-primary hover:underline">Dashboard</a> to upload a CSV or Excel file first.
+                Please go to the <Link href="/dashboard/project-explorer" className="font-medium text-primary hover:underline">Project Management</Link> page to upload a file first.
             </AlertDescription>
         </Alert>
     );
@@ -435,5 +435,3 @@ export function DataFileEditor() {
     </div>
   );
 }
-
-    

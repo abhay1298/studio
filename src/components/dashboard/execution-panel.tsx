@@ -54,11 +54,14 @@ export function ExecutionPanel() {
     };
     
     checkDataFile();
+    // Listen for custom event or storage change
     window.addEventListener('storage', checkDataFile);
-    window.addEventListener('focus', checkDataFile);
+    window.addEventListener('projectUpdated', checkDataFile);
+    window.addEventListener('focus', checkDataFile); // In case of multi-tab browsing
 
     return () => {
         window.removeEventListener('storage', checkDataFile);
+        window.removeEventListener('projectUpdated', checkDataFile);
         window.removeEventListener('focus', checkDataFile);
     };
   }, []);
