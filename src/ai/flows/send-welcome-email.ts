@@ -18,7 +18,7 @@ const WelcomeEmailInputSchema = z.object({
 export type WelcomeEmailInput = z.infer<typeof WelcomeEmailInputSchema>;
 
 const WelcomeEmailOutputSchema = z.object({
-  message: z.string().describe('A confirmation message indicating the result.'),
+  message: z.string().describe('A personalized welcome message for the new user.'),
 });
 export type WelcomeEmailOutput = z.infer<typeof WelcomeEmailOutputSchema>;
 
@@ -37,14 +37,13 @@ const sendWelcomeEmailFlow = ai.defineFlow(
 
     // In a real application, you would integrate with an email service like SendGrid, Mailgun, or AWS SES here.
     // The AI could be used to generate a personalized welcome message.
-    // For now, we will just return a success message.
     
     // const personalizedMessage = await ai.generate({
     //   prompt: `Generate a short, friendly welcome message for a new user named ${input.name} who just signed up for "Robot Maestro".`
     // });
 
     return {
-      message: `A welcome email has been sent to ${input.email}.`,
+      message: `Welcome, ${input.name}! Your registration was successful.`,
     };
   }
 );
