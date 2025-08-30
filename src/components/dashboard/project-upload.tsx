@@ -25,6 +25,15 @@ type ProjectUploadProps = {
   onProjectFileChange: (file: File | null) => void;
 };
 
+// Helper to create a mock data file for the simulation
+const createMockDataFile = () => {
+    const csvContent = `test_case,user,password
+TC_001,user1,pass1
+TC_002,user2,pass2`;
+    const blob = new Blob([csvContent], { type: 'text/csv' });
+    return new File([blob], "test_data.csv", { type: "text/csv" });
+};
+
 export function ProjectUpload({ onProjectFileChange }: ProjectUploadProps) {
   const { toast } = useToast();
   const router = useRouter();
@@ -32,6 +41,26 @@ export function ProjectUpload({ onProjectFileChange }: ProjectUploadProps) {
   const [dataFile, setDataFile] = useState<File | null>(null);
   const [gitUrl, setGitUrl] = useState('');
   const [isCloning, setIsCloning] = useState(false);
+
+  // This function will be called to simulate loading a data file
+  const autoLoadDataFile = (foundFile: File) => {
+    setDataFile(foundFile);
+    const reader = new FileReader();
+    reader.onload = function(event) {
+        if (typeof window !== 'undefined' && event.target?.result) {
+            sessionStorage.setItem('uploadedDataFile', event.target.result as string);
+            sessionStorage.setItem('uploadedDataFileName', foundFile.name);
+            // This event tells other components that the data file has changed
+            window.dispatchEvent(new Event('storage'));
+        }
+    };
+    reader.readAsDataURL(foundFile);
+    toast({
+        title: 'Orchestrator File Found',
+        description: `Automatically loaded '${foundFile.name}' from your project.`,
+        action: <FileCheck2 className="text-green-500" />,
+    });
+  };
 
   const handleFileChange = (
     e: React.ChangeEvent<HTMLInputElement>,
@@ -48,6 +77,7 @@ export function ProjectUpload({ onProjectFileChange }: ProjectUploadProps) {
         if (typeof window !== 'undefined') {
           sessionStorage.removeItem('uploadedDataFile');
           sessionStorage.removeItem('uploadedDataFileName');
+          window.dispatchEvent(new Event('storage'));
         }
       }
       return;
@@ -66,6 +96,11 @@ export function ProjectUpload({ onProjectFileChange }: ProjectUploadProps) {
         isValid = true;
         setProjectFile(file);
         onProjectFileChange(file);
+        // SIMULATION: Check if project contains a data file
+        if (file.name.includes("with-data")) {
+            const mockData = createMockDataFile();
+            autoLoadDataFile(mockData);
+        }
       } else {
         onProjectFileChange(null);
         setProjectFile(null);
@@ -74,12 +109,12 @@ export function ProjectUpload({ onProjectFileChange }: ProjectUploadProps) {
       if (allowedDataTypes.includes(file.type)) {
         isValid = true;
         setDataFile(file);
-        // Store the file in session storage to pass to the editor page
         const reader = new FileReader();
         reader.onload = function(event) {
           if (typeof window !== 'undefined' && event.target?.result) {
             sessionStorage.setItem('uploadedDataFile', event.target.result as string);
             sessionStorage.setItem('uploadedDataFileName', file.name);
+            window.dispatchEvent(new Event('storage'));
           }
         };
         reader.readAsDataURL(file);
@@ -88,6 +123,7 @@ export function ProjectUpload({ onProjectFileChange }: ProjectUploadProps) {
          if (typeof window !== 'undefined') {
           sessionStorage.removeItem('uploadedDataFile');
           sessionStorage.removeItem('uploadedDataFileName');
+          window.dispatchEvent(new Event('storage'));
         }
       }
     }
@@ -95,7 +131,7 @@ export function ProjectUpload({ onProjectFileChange }: ProjectUploadProps) {
     if (isValid) {
       toast({
         title: 'File Uploaded Successfully',
-        description: `${file.name} (${(file.size / 1024).toFixed(2)} KB)`,
+        description: `${file.name}`,
         action: <FileCheck2 className="text-green-500" />,
       });
     } else {
@@ -126,14 +162,11 @@ export function ProjectUpload({ onProjectFileChange }: ProjectUploadProps) {
         toast({
             variant: 'destructive',
             title: 'Invalid Git URL',
-            description: 'Please enter a valid Git repository URL (e.g., https://github.com/user/repo.git).',
+            description: 'Please enter a valid Git repository URL.',
         });
         return;
     }
     setIsCloning(true);
-    // In a real application, you would send this URL to your backend.
-    // The backend would clone the repo, maybe zip it, and make it available.
-    // Here, we'll just simulate the process.
     setTimeout(() => {
         setIsCloning(false);
         const repoName = gitUrl.split('/').pop()?.replace('.git', '') || 'repository';
@@ -142,9 +175,16 @@ export function ProjectUpload({ onProjectFileChange }: ProjectUploadProps) {
         onProjectFileChange(dummyFile);
         toast({
             title: 'Repository Cloned',
-            description: `Successfully imported project from '${repoName}'. It is now the active project.`,
+            description: `Successfully imported project from '${repoName}'.`,
             action: <GitBranch className="text-green-500" />,
         });
+
+        // SIMULATION: Check if imported project contains a data file
+        if (repoName.includes("with-data")) {
+            const mockData = createMockDataFile();
+            autoLoadDataFile(mockData);
+        }
+
     }, 2000);
   };
   
@@ -173,7 +213,7 @@ export function ProjectUpload({ onProjectFileChange }: ProjectUploadProps) {
                 <FileCheck2 className="h-4 w-4 !text-green-500" />
                 <AlertTitle>Active Project: {projectFile.name}</AlertTitle>
                 <AlertDescription>
-                    The application will use this project for dependency checking and execution.
+                    The application will use this project for execution.
                 </AlertDescription>
             </Alert>
             <Button variant="outline" className="w-full" onClick={handleClearProject}>
