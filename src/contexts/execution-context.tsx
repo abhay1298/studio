@@ -142,11 +142,13 @@ const getInitialState = <T,>(key: string, defaultValue: T): T => {
     try {
         const item = window.sessionStorage.getItem(key);
         if (!item) return defaultValue;
+        // Check for 'null' or 'undefined' strings which can be saved by mistake
+        if (item === 'null' || item === 'undefined') return defaultValue;
         try {
             return JSON.parse(item);
         } catch {
             // If it's not JSON, return the raw string
-            return item as T;
+            return item as any;
         }
     } catch (error) {
         console.warn(`Error reading sessionStorage key "${key}":`, error);
@@ -491,76 +493,90 @@ export function ExecutionProvider({ children }: { children: ReactNode }) {
     }
   }, [clearDataFile, parseAndSetDataFile, toast]);
 
+  const readFileAsArrayBuffer = (file: File): Promise<ArrayBuffer> => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result as ArrayBuffer);
+      reader.onerror = () => reject(reader.error);
+      reader.readAsArrayBuffer(file);
+    });
+  };
+
   const handleProjectFileUpload = useCallback(async (file: File | null) => {
     if (!file) {
       clearProjectFile();
       return;
     }
-
+  
     setRequirementsContent(null);
-    
+    setProjectFileName(file.name); // Optimistically set name
+  
     try {
-      const dataUrl = await fileToDataURL(file);
-      setProjectFileContent(dataUrl);
-      setProjectFileName(file.name);
-
+      const arrayBuffer = await readFileAsArrayBuffer(file);
+      // Store the project file content if needed, for now we process directly
+      // const dataUrl = `data:${file.type};base64,${Buffer.from(arrayBuffer).toString('base64')}`;
+      // setProjectFileContent(dataUrl);
+      
       toast({
         title: 'Project Uploaded Successfully',
         description: file.name,
         action: <FileCheck2 className="text-green-500" />,
       });
-
-      const blob = dataURLtoBlob(dataUrl);
-      const zip = await JSZip.loadAsync(blob);
-      
+  
+      const zip = await JSZip.loadAsync(arrayBuffer);
       let reqFileEntry: JSZip.JSZipObject | null = null;
+  
       zip.forEach((relativePath, zipEntry) => {
         if (relativePath.endsWith('requirements.txt') && !zipEntry.dir) {
           reqFileEntry = zipEntry;
         }
       });
-
+  
       if (reqFileEntry) {
         const content = await reqFileEntry.async('string');
         setRequirementsContent(content);
-         toast({
-            title: 'Found requirements.txt',
-            description: "Dependencies are ready to be scanned.",
+        toast({
+          title: 'Found requirements.txt',
+          description: "Dependencies are ready to be scanned.",
         });
       } else {
         toast({
-            variant: 'default',
-            title: 'No requirements.txt found',
-            description: "The uploaded project does not contain a requirements.txt file.",
+          variant: 'default',
+          title: 'No requirements.txt found',
+          description: "The uploaded project does not contain a requirements.txt file.",
         });
       }
       
+      // Auto-load data file from zip ONLY if one isn't already loaded
       if (!dataFileName) {
         let dataFileEntry: JSZip.JSZipObject | null = null;
         zip.forEach((relativePath, zipEntry) => {
           if ((relativePath.toLowerCase().endsWith('.csv') || relativePath.toLowerCase().endsWith('.xlsx')) && !zipEntry.dir) {
-            dataFileEntry = zipEntry;
+            if (!dataFileEntry) { // Take the first one found
+              dataFileEntry = zipEntry;
+            }
           }
         });
         
         if (dataFileEntry) {
           const content = await dataFileEntry.async('blob');
-          const foundDataFile = new File([content], dataFileEntry.name);
+          const foundDataFile = new File([content], dataFileEntry.name, { type: content.type });
           await handleDataFileUpload(foundDataFile);
         }
       }
-
+  
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
       console.error("Error reading zip file:", errorMessage);
       toast({
         variant: 'destructive',
-        title: 'Error processing project',
-        description: 'Could not read the contents of the uploaded zip file. It may be corrupt or not a valid zip file.',
+        title: 'Error Processing Project',
+        description: `Could not read the zip file. It may be corrupt. Error: ${errorMessage}`,
       });
       clearProjectFile();
     }
   }, [clearProjectFile, dataFileName, handleDataFileUpload, toast]);
+  
   
   const fetchSuites = useCallback(async () => {
     setIsLoadingSuites(true);
