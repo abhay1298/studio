@@ -124,4 +124,5 @@ def run_robot_tests():
 if __name__ == '__main__':
     # It's recommended to run Flask with a production-ready WSGI server like Gunicorn or Waitress.
     # The command `flask run` uses a development server which is not suitable for production.
-    app.run(host='0.0.0.0', port=5001, debug=True)
+    # Using 127.0.0.1 is often more reliable for local development than 0.0.0.0.
+    app.run(host='127.0.0.1', port=5001, debug=True)
