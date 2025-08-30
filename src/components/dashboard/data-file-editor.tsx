@@ -1,4 +1,5 @@
 
+
 "use client";
 
 import { useEffect, useState, useCallback } from 'react';
@@ -39,7 +40,7 @@ type ValidationError = {
 };
 
 export function DataFileEditor() {
-  const { dataFile, editedData, setEditedData, editedHeaders, setEditedHeaders } = useExecutionContext();
+  const { dataFileName, editedData, setEditedData, editedHeaders, setEditedHeaders } = useExecutionContext();
   const [validationErrors, setValidationErrors] = useState<ValidationError[]>([]);
   const { toast } = useToast();
 
@@ -87,7 +88,7 @@ export function DataFileEditor() {
   };
   
   const handleDownload = () => {
-    if (!dataFile) {
+    if (!dataFileName) {
         toast({
             variant: "destructive",
             title: 'No File to Download',
@@ -97,25 +98,25 @@ export function DataFileEditor() {
     }
     const worksheetData = [editedHeaders, ...editedData];
     
-    if (dataFile.name.endsWith('.csv')) {
+    if (dataFileName.endsWith('.csv')) {
       const csv = Papa.unparse(worksheetData);
       const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
       const link = document.createElement('a');
       link.href = URL.createObjectURL(blob);
-      link.setAttribute('download', `edited-${dataFile.name}`);
+      link.setAttribute('download', `edited-${dataFileName}`);
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
-    } else if (dataFile.name.endsWith('.xlsx')) {
+    } else if (dataFileName.endsWith('.xlsx')) {
       const ws = XLSX.utils.aoa_to_sheet(worksheetData);
       const wb = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(wb, ws, 'Sheet1');
-      XLSX.writeFile(wb, `edited-${dataFile.name}`);
+      XLSX.writeFile(wb, `edited-${dataFileName}`);
     }
 
      toast({
         title: 'File Ready for Download',
-        description: `Your edited file ${dataFile.name} has been saved.`,
+        description: `Your edited file ${dataFileName} has been saved.`,
       });
   };
 
@@ -184,7 +185,7 @@ export function DataFileEditor() {
     }
   };
 
-  if (!dataFile) {
+  if (!dataFileName) {
     return (
         <Alert>
             <UploadCloud className="h-4 w-4" />
@@ -314,3 +315,5 @@ export function DataFileEditor() {
     </div>
   );
 }
+
+    

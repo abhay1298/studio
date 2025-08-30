@@ -1,4 +1,5 @@
 
+
 "use client";
 
 import { useState, useEffect } from "react";
@@ -36,6 +37,7 @@ export function ExecutionPanel() {
       logs, 
       lastFailedLogs,
       runConfig,
+      dataFileName,
       handleInputChange,
       handleRun,
       handleStop,
@@ -43,31 +45,9 @@ export function ExecutionPanel() {
   } = useExecutionContext();
 
   const { toast } = useToast();
-  const [isDataFileUploaded, setIsDataFileUploaded] = useState(false);
-
-  useEffect(() => {
-    const checkDataFile = () => {
-        if (typeof window !== 'undefined') {
-            const file = sessionStorage.getItem('uploadedDataFile');
-            setIsDataFileUploaded(!!file);
-        }
-    };
-    
-    checkDataFile();
-    // Listen for custom event or storage change
-    window.addEventListener('storage', checkDataFile);
-    window.addEventListener('projectUpdated', checkDataFile);
-    window.addEventListener('focus', checkDataFile); // In case of multi-tab browsing
-
-    return () => {
-        window.removeEventListener('storage', checkDataFile);
-        window.removeEventListener('projectUpdated', checkDataFile);
-        window.removeEventListener('focus', checkDataFile);
-    };
-  }, []);
 
   const handleRunClick = (runType: string) => {
-    if (runType === "Orchestrator" && !isDataFileUploaded) {
+    if (runType === "Orchestrator" && !dataFileName) {
       toast({
         variant: "destructive",
         title: "Excel or CSV file not uploaded",
@@ -151,7 +131,7 @@ export function ExecutionPanel() {
                   This mode will execute tests based on the uploaded Excel/CSV file. Ensure the file is uploaded and validated.
                 </AlertDescription>
               </Alert>
-              <Button onClick={() => handleRunClick("Orchestrator")} disabled={isRunning || !isDataFileUploaded}>
+              <Button onClick={() => handleRunClick("Orchestrator")} disabled={isRunning || !dataFileName}>
                 {isRunning && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                 Run via Orchestrator
               </Button>
@@ -222,3 +202,5 @@ export function ExecutionPanel() {
     </Card>
   );
 }
+
+    

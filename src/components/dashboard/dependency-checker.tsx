@@ -1,4 +1,5 @@
 
+
 "use client";
 
 import { useState, useEffect } from 'react';
@@ -131,3 +132,5 @@ export function DependencyChecker({ requirementsContent, projectIsLoaded }: Depe
     </>
   );
 }
+
+    

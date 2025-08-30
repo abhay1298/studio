@@ -9,8 +9,8 @@ import { useExecutionContext } from "@/contexts/execution-context";
 export default function ProjectManagementPage() {
   const { 
     requirementsContent, 
-    projectFile,
-    dataFile,
+    projectFileName,
+    dataFileName,
     handleProjectFileUpload,
     handleDataFileUpload,
     clearProjectFile,
@@ -23,8 +23,8 @@ export default function ProjectManagementPage() {
         Project Management
       </h1>
       <ProjectUpload 
-        projectFile={projectFile}
-        dataFile={dataFile}
+        projectFileName={projectFileName}
+        dataFileName={dataFileName}
         onProjectFileChange={handleProjectFileUpload}
         onDataFileChange={handleDataFileUpload}
         onClearProjectFile={clearProjectFile}
@@ -36,9 +36,11 @@ export default function ProjectManagementPage() {
             <CardDescription>Scan the `requirements.txt` from your uploaded project to see if the required Python libraries are installed in the backend environment.</CardDescription>
         </CardHeader>
         <CardContent>
-            <DependencyChecker requirementsContent={requirementsContent} projectIsLoaded={!!projectFile}/>
+            <DependencyChecker requirementsContent={requirementsContent} projectIsLoaded={!!projectFileName}/>
         </CardContent>
       </Card>
     </div>
   );
 }
+
+    

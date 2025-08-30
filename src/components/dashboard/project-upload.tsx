@@ -1,4 +1,5 @@
 
+
 "use client";
 
 import * as React from 'react';
@@ -22,8 +23,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '../ui/tabs';
 
 
 type ProjectUploadProps = {
-    projectFile: File | null;
-    dataFile: File | null;
+    projectFileName: string | null;
+    dataFileName: string | null;
     onProjectFileChange: (file: File | null) => void;
     onDataFileChange: (file: File | null) => void;
     onClearProjectFile: () => void;
@@ -31,8 +32,8 @@ type ProjectUploadProps = {
 };
 
 export function ProjectUpload({ 
-    projectFile,
-    dataFile,
+    projectFileName,
+    dataFileName,
     onProjectFileChange,
     onDataFileChange,
     onClearProjectFile,
@@ -128,7 +129,7 @@ export function ProjectUpload({
         </CardDescription>
       </CardHeader>
       
-      {!projectFile ? (
+      {!projectFileName ? (
         <Tabs defaultValue="upload" className="w-full">
             <TabsList className="grid w-full grid-cols-2 mx-6" style={{width: 'calc(100% - 3rem)'}}>
                 <TabsTrigger value="upload" disabled={isCloning}>
@@ -190,7 +191,7 @@ export function ProjectUpload({
                         <FolderArchive className="h-6 w-6 text-primary"/>
                         <div className="flex flex-col">
                             <span className="font-semibold">Active Project</span>
-                            <span className="text-sm text-muted-foreground truncate max-w-xs">{projectFile.name}</span>
+                            <span className="text-sm text-muted-foreground truncate max-w-xs">{projectFileName}</span>
                         </div>
                     </div>
                     <Button variant="destructive" size="sm" onClick={onClearProjectFile}>Clear</Button>
@@ -209,7 +210,7 @@ export function ProjectUpload({
         </CardDescription>
       </CardHeader>
       <CardContent>
-        {!dataFile ? (
+        {!dataFileName ? (
             <div className="grid gap-2">
             <Label htmlFor="data-file">Test Data File (.xlsx, .csv)</Label>
             <div className="flex items-center gap-2">
@@ -236,7 +237,7 @@ export function ProjectUpload({
                         <FileSpreadsheet className="h-6 w-6 text-accent"/>
                         <div className="flex flex-col">
                             <span className="font-semibold">Data File Loaded</span>
-                            <span className="text-sm text-muted-foreground truncate max-w-xs">{dataFile.name}</span>
+                            <span className="text-sm text-muted-foreground truncate max-w-xs">{dataFileName}</span>
                         </div>
                     </div>
                     <Button variant="destructive" size="sm" onClick={onClearDataFile}>Clear</Button>
@@ -245,7 +246,7 @@ export function ProjectUpload({
         )}
       </CardContent>
        
-       {dataFile && (
+       {dataFileName && (
         <CardFooter>
           <Button variant="outline" className="w-full" onClick={handleEditClick}>
             <Pencil className="mr-2 h-4 w-4" />
@@ -257,3 +258,5 @@ export function ProjectUpload({
     </div>
   );
 }
+
+    

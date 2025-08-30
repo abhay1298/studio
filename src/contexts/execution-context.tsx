@@ -26,8 +26,10 @@ interface ExecutionContextType {
   logs: string[];
   lastFailedLogs: string;
   runConfig: RunConfig;
-  projectFile: File | null;
-  dataFile: File | null;
+  
+  projectFileName: string | null;
+  dataFileName: string | null;
+  
   requirementsContent: string | null;
   testSuites: TestSuite[];
   isLoadingSuites: boolean;
@@ -61,8 +63,12 @@ const fileToDataURL = (file: File): Promise<string> => {
     });
 };
 
-const dataURLtoBlob = (dataurl: string) => {
-    return fetch(dataurl).then(res => res.blob());
+const dataURLtoBlob = async (dataurl: string) => {
+    const res = await fetch(dataurl);
+    if (!res.ok) {
+        throw new Error(`Failed to fetch data URL: ${res.status} ${res.statusText}`);
+    }
+    return res.blob();
 };
 
 
@@ -119,14 +125,19 @@ const validateOrchestratorData = async (): Promise<string | null> => {
     }
 };
 
-const getInitialState = <T,>(key: string, defaultValue: T, transform?: (value: string) => any): T => {
+const getInitialState = <T,>(key: string, defaultValue: T): T => {
     if (typeof window === 'undefined') {
         return defaultValue;
     }
     try {
         const item = window.sessionStorage.getItem(key);
         if (!item) return defaultValue;
-        return transform ? transform(item) : JSON.parse(item);
+        try {
+            return JSON.parse(item);
+        } catch {
+            // If it's not JSON, return the raw string
+            return item as T;
+        }
     } catch (error) {
         console.warn(`Error reading sessionStorage key "${key}":`, error);
         return defaultValue;
@@ -145,30 +156,41 @@ export function ExecutionProvider({ children }: { children: ReactNode }) {
     testcase: '',
   });
 
-  const [projectFile, setProjectFile] = useState<File | null>(() => {
-    if (typeof window === 'undefined') return null;
-    const name = sessionStorage.getItem('projectFileName');
-    return name ? new File([], name) : null;
-  });
-  const [dataFile, setDataFile] = useState<File | null>(() => {
-    if (typeof window === 'undefined') return null;
-    const name = sessionStorage.getItem('dataFileName');
-    return name ? new File([], name) : null;
-  });
+  const [projectFileName, setProjectFileName] = useState<string | null>(() => getInitialState('projectFileName', null));
+  const [dataFileName, setDataFileName] = useState<string | null>(() => getInitialState('dataFileName', null));
 
-  const [requirementsContent, setRequirementsContent] = useState<string | null>(() => {
-    if (typeof window === 'undefined') return null;
-    return sessionStorage.getItem('requirementsContent');
-  });
+  const [requirementsContent, setRequirementsContent] = useState<string | null>(() => getInitialState('requirementsContent', null));
 
   const [testSuites, setTestSuites] = useState<TestSuite[]>([]);
   const [isLoadingSuites, setIsLoadingSuites] = useState(false);
   const [suiteLoadError, setSuiteLoadError] = useState<string | null>(null);
 
-  const [editedData, setEditedData] = useState<TableData>(getInitialState('editedData', []));
-  const [editedHeaders, setEditedHeaders] = useState<string[]>(getInitialState('editedHeaders', []));
+  const [editedData, setEditedData] = useState<TableData>(() => getInitialState('editedData', []));
+  const [editedHeaders, setEditedHeaders] = useState<string[]>(() => getInitialState('editedHeaders', []));
 
   const { toast } = useToast();
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      if (projectFileName) sessionStorage.setItem('projectFileName', projectFileName);
+      else sessionStorage.removeItem('projectFileName');
+    }
+  }, [projectFileName]);
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      if (dataFileName) sessionStorage.setItem('dataFileName', dataFileName);
+      else sessionStorage.removeItem('dataFileName');
+    }
+  }, [dataFileName]);
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      if (requirementsContent) sessionStorage.setItem('requirementsContent', requirementsContent);
+      else sessionStorage.removeItem('requirementsContent');
+    }
+  }, [requirementsContent]);
+
 
   useEffect(() => {
     if (typeof window !== 'undefined') {
@@ -402,7 +424,7 @@ export function ExecutionProvider({ children }: { children: ReactNode }) {
   }, [toast]);
 
   const clearProjectFile = useCallback(() => {
-    setProjectFile(null);
+    setProjectFileName(null);
     setRequirementsContent(null);
     if (typeof window !== 'undefined') {
         sessionStorage.removeItem('projectFileName');
@@ -413,7 +435,7 @@ export function ExecutionProvider({ children }: { children: ReactNode }) {
   }, [toast]);
 
   const clearDataFile = useCallback(() => {
-    setDataFile(null);
+    setDataFileName(null);
     setEditedData([]);
     setEditedHeaders([]);
     if (typeof window !== 'undefined') {
@@ -430,21 +452,25 @@ export function ExecutionProvider({ children }: { children: ReactNode }) {
       clearDataFile();
       return;
     }
-    setDataFile(file);
+    
     try {
+      const dataUrl = await fileToDataURL(file);
       if (typeof window !== 'undefined') {
-        const dataUrl = await fileToDataURL(file);
         sessionStorage.setItem('dataFileName', file.name);
         sessionStorage.setItem('dataFileContent', dataUrl);
       }
-      parseAndSetDataFile(file);
+      setDataFileName(file.name);
+      await parseAndSetDataFile(file);
       toast({
         title: 'Data File Uploaded',
         description: file.name,
         action: <FileCheck2 className="text-green-500" />,
       });
+      window.dispatchEvent(new CustomEvent('projectUpdated'));
     } catch (e) {
-      toast({ variant: 'destructive', title: "Could not read data file" });
+      const errorMessage = e instanceof Error ? e.message : "Unknown error";
+      toast({ variant: 'destructive', title: "Could not read data file", description: errorMessage });
+      clearDataFile();
     }
   }, [clearDataFile, parseAndSetDataFile, toast]);
 
@@ -454,20 +480,14 @@ export function ExecutionProvider({ children }: { children: ReactNode }) {
       return;
     }
 
-    setProjectFile(file);
-    if (typeof window !== 'undefined') {
-        sessionStorage.setItem('projectFileName', file.name);
-    }
     setRequirementsContent(null);
-    if (typeof window !== 'undefined') {
-        sessionStorage.removeItem('requirementsContent');
-    }
     
     try {
+      const dataUrl = await fileToDataURL(file);
       if (typeof window !== 'undefined') {
-          const dataUrl = await fileToDataURL(file);
           sessionStorage.setItem('projectFileContent', dataUrl);
       }
+      setProjectFileName(file.name);
 
       toast({
         title: 'Project Uploaded Successfully',
@@ -475,7 +495,7 @@ export function ExecutionProvider({ children }: { children: ReactNode }) {
         action: <FileCheck2 className="text-green-500" />,
       });
 
-      const zip = await JSZip.loadAsync(file);
+      const zip = await JSZip.loadAsync(await dataURLtoBlob(dataUrl));
       
       let reqFileEntry: JSZip.JSZipObject | null = null;
       zip.forEach((relativePath, zipEntry) => {
@@ -487,9 +507,6 @@ export function ExecutionProvider({ children }: { children: ReactNode }) {
       if (reqFileEntry) {
         const content = await reqFileEntry.async('string');
         setRequirementsContent(content);
-        if (typeof window !== 'undefined') {
-            sessionStorage.setItem('requirementsContent', content);
-        }
          toast({
             title: 'Found requirements.txt',
             description: "Dependencies are ready to be scanned.",
@@ -502,7 +519,7 @@ export function ExecutionProvider({ children }: { children: ReactNode }) {
         });
       }
       
-      if (!dataFile) {
+      if (!dataFileName) {
         let dataFileEntry: JSZip.JSZipObject | null = null;
         zip.forEach((relativePath, zipEntry) => {
           if ((relativePath.toLowerCase().endsWith('.csv') || relativePath.toLowerCase().endsWith('.xlsx')) && !zipEntry.dir) {
@@ -513,7 +530,7 @@ export function ExecutionProvider({ children }: { children: ReactNode }) {
         if (dataFileEntry) {
           const content = await dataFileEntry.async('blob');
           const foundDataFile = new File([content], dataFileEntry.name);
-          handleDataFileUpload(foundDataFile);
+          await handleDataFileUpload(foundDataFile);
         }
       }
 
@@ -527,7 +544,7 @@ export function ExecutionProvider({ children }: { children: ReactNode }) {
       });
       clearProjectFile();
     }
-  }, [clearProjectFile, dataFile, handleDataFileUpload, toast]);
+  }, [clearProjectFile, dataFileName, handleDataFileUpload, toast]);
   
   const fetchSuites = useCallback(async () => {
     setIsLoadingSuites(true);
@@ -553,8 +570,8 @@ export function ExecutionProvider({ children }: { children: ReactNode }) {
     logs,
     lastFailedLogs,
     runConfig,
-    projectFile,
-    dataFile,
+    projectFileName,
+    dataFileName,
     requirementsContent,
     testSuites,
     isLoadingSuites,
@@ -588,3 +605,5 @@ export function useExecutionContext() {
   }
   return context;
 }
+
+    
