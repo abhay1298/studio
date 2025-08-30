@@ -1,12 +1,14 @@
 
-from flask import Flask, request, jsonify, make_response
+from flask import Flask, request, jsonify, make_response, send_from_directory
 from flask_cors import CORS
 import subprocess
 import time
 import random
 import os
 import signal
-import webbrowser # <-- Import the webbrowser library
+import webbrowser
+import datetime
+import shutil
 
 app = Flask(__name__)
 CORS(app) # Enable CORS for all routes
@@ -22,6 +24,11 @@ CORS(app) # Enable CORS for all routes
 
 # Global variable to hold the running process
 robot_process = None
+REPORTS_DIR = 'reports_archive' # Directory to store archived reports
+
+if not os.path.exists(REPORTS_DIR):
+    os.makedirs(REPORTS_DIR)
+
 
 @app.route('/run', methods=['POST'])
 def run_robot_tests():
@@ -39,13 +46,15 @@ def run_robot_tests():
         
         # --- IMPORTANT: CONFIGURE YOUR TEST DIRECTORY ---
         # This is the path to your Robot Framework tests.
-        # For this example, we assume there's a 'tests' folder sibling to the `python_backend_example` directory.
         # You MUST change this path to point to your actual test suite.
         tests_directory = r'C:\Users\c-aku\robotFramework\robotFramework\pythonProject\Test'
 
-
         # --- Command Construction (Real) ---
         command = ['robot']
+        timestamp = datetime.datetime.now().strftime('%Y%m%d-%H%M%S')
+        output_dir = os.path.join(os.getcwd(), 'temp_output') # Temporary output directory
+
+        command.extend(['--outputdir', output_dir])
 
         if runType == 'By Tag':
             if config.get('includeTags'):
@@ -53,79 +62,72 @@ def run_robot_tests():
             if config.get('excludeTags'):
                 command.extend(['-e', config['excludeTags']])
         elif runType == 'By Suite' and config.get('suite'):
-            # Note: The '-s' argument in robot is for suite name, not file path.
-            # A more robust solution might involve parsing file paths.
             command.extend(['-s', config['suite']])
         elif runType == 'By Test Case' and config.get('testcase'):
             command.extend(['-t', config['testcase']])
         
-        # Add the path to the test files/folder at the end
         command.append(tests_directory)
             
         print(f"--- Preparing Real Execution ---")
-        print(f"Received Run Type: {runType}")
-        print(f"Received Config: {config}")
         print(f"Constructed Command: {' '.join(command)}")
-        print(f"Executing in directory: {os.getcwd()}") # Log current working directory
-        print("------------------------------")
         
         # --- Real Execution using subprocess ---
-        # We use Popen to allow for capturing output in real-time if needed,
-        # but for simplicity, we'll use `run` which waits for completion.
-        # Using Popen now to allow for termination.
         robot_process = subprocess.Popen(
             command,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
-            text=True, # Decodes stdout/stderr as text
+            text=True,
             creationflags=subprocess.CREATE_NEW_PROCESS_GROUP if os.name == 'nt' else 0
         )
         
-        stdout, stderr = robot_process.communicate() # waits for process to finish
+        stdout, stderr = robot_process.communicate()
         returncode = robot_process.poll()
-        robot_process = None # Clear the process variable
+        robot_process = None
 
         logs = []
         logs.append("==============================================================================")
         logs.append(f"Executing command: {' '.join(command)}")
         logs.append("==============================================================================")
         
-        # Append actual stdout and stderr from the command
         if stdout:
             logs.append("\n--- STDOUT ---\n")
             logs.append(stdout)
         if stderr:
             logs.append("\n--- STDERR ---\n")
             logs.append(stderr)
+            
+        report_file = None
+        log_file = None
 
-        # Determine status from the return code
-        if returncode == 0:
-            status = 'success'
-            logs.append("\nExecution Result: SUCCESS (Exit Code 0)")
-            # --- Auto-open report.html on success ---
-            report_path = os.path.join(os.getcwd(), 'report.html')
-            if os.path.exists(report_path):
-                logs.append(f"Attempting to open report.html at: {report_path}")
-                webbrowser.open('file://' + os.path.realpath(report_path))
-                logs.append("Successfully opened report.html in your default browser.")
-            else:
-                logs.append(f"Could not find report.html at {report_path}")
-        else:
-            status = 'failed'
-            logs.append(f"\nExecution Result: FAILED (Exit Code {returncode})")
-            # If the command failed because robot isn't installed, provide a helpful message
-            if "not found" in stderr.lower() or "is not recognized" in stderr.lower():
-                logs.append("\n[HINT]: The 'robot' command was not found. Is Robot Framework installed in the Python environment running this server?")
+        # Archive reports
+        try:
+            temp_report_path = os.path.join(output_dir, 'report.html')
+            temp_log_path = os.path.join(output_dir, 'log.html')
 
+            if os.path.exists(temp_report_path):
+                report_file = f"report-{timestamp}.html"
+                shutil.move(temp_report_path, os.path.join(REPORTS_DIR, report_file))
+                logs.append(f"\nSuccessfully archived report to {report_file}")
 
-        # --- Pass/Fail Count Simulation (for UI) ---
-        # A real implementation would parse the output.xml from Robot Framework
-        # to get the exact counts. This is a placeholder for that logic.
+            if os.path.exists(temp_log_path):
+                log_file = f"log-{timestamp}.html"
+                shutil.move(temp_log_path, os.path.join(REPORTS_DIR, log_file))
+                logs.append(f"Successfully archived log to {log_file}")
+            
+            # Clean up other output files if necessary
+            if os.path.exists(output_dir):
+                shutil.rmtree(output_dir)
+
+        except Exception as e:
+            logs.append(f"\nError archiving reports: {e}")
+
+        status = 'success' if returncode == 0 else 'failed'
+        logs.append(f"\nExecution Result: {status.upper()} (Exit Code {returncode})")
+
         output_text = stdout + stderr
         pass_count = output_text.count('| PASS |')
         fail_count = output_text.count('| FAIL |')
         
-        # If no explicit pass/fail found, simulate some for demo purposes
         if status == 'success' and pass_count == 0 and fail_count == 0:
             pass_count = random.randint(1, 5)
         elif status == 'failed' and pass_count == 0 and fail_count == 0:
@@ -138,6 +140,8 @@ def run_robot_tests():
             "logs": "\n".join(logs),
             "pass_count": pass_count,
             "fail_count": fail_count,
+            "reportFile": report_file,
+            "logFile": log_file
         })
 
     except Exception as e:
@@ -151,13 +155,12 @@ def stop_robot_tests():
     if robot_process and robot_process.poll() is None:
         try:
             print(f"--- Terminating Process PID: {robot_process.pid} ---")
-            # For Windows, we need to use a different method to kill the process group
             if os.name == 'nt':
                  os.kill(robot_process.pid, signal.CTRL_C_EVENT)
-            else: # For Linux/macOS
+            else:
                  os.killpg(os.getpgid(robot_process.pid), signal.SIGTERM)
             
-            robot_process.wait(timeout=5) # Wait for the process to terminate
+            robot_process.wait(timeout=5)
             robot_process = None
             return jsonify({"status": "success", "message": "Execution stopped successfully."}), 200
         except Exception as e:
@@ -166,11 +169,35 @@ def stop_robot_tests():
     else:
         return jsonify({"status": "info", "message": "No execution running to stop."}), 200
 
+@app.route('/reports', methods=['GET'])
+def list_reports():
+    try:
+        files = os.listdir(REPORTS_DIR)
+        # Sort files by modification time, newest first
+        files.sort(key=lambda x: os.path.getmtime(os.path.join(REPORTS_DIR, x)), reverse=True)
+        return jsonify(files)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/reports/<filename>', methods=['GET'])
+def get_report(filename):
+    try:
+        return send_from_directory(REPORTS_DIR, filename, as_attachment=False)
+    except FileNotFoundError:
+        return jsonify({"error": "File not found"}), 404
+
+@app.route('/delete-report/<filename>', methods=['DELETE'])
+def delete_report(filename):
+    try:
+        file_path = os.path.join(REPORTS_DIR, filename)
+        if os.path.exists(file_path):
+            os.remove(file_path)
+            return jsonify({"success": f"Deleted {filename}"}), 200
+        else:
+            return jsonify({"error": "File not found"}), 404
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
 
 if __name__ == '__main__':
-    # It's recommended to run Flask with a production-ready WSGI server like Gunicorn or Waitress.
-    # The command `flask run` uses a development server which is not suitable for production.
-    # Using 127.0.0.1 is often more reliable for local development than 0.0.0.0.
     app.run(host='127.0.0.1', port=5001, debug=True)
-
-    

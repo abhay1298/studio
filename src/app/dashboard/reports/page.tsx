@@ -19,53 +19,55 @@ import {
 } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Download, Eye, Ban } from 'lucide-react';
+import { Download, Eye, Ban, Trash2, Loader2, ServerCrash, RefreshCw } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import Link from 'next/link';
 import { Skeleton } from '@/components/ui/skeleton';
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 
 type Report = {
   id: string;
   suite: string;
-  status: 'Success' | 'Failed';
+  status: 'Success' | 'Failed' | 'Stopped';
   timestamp: string;
   pass: number;
   fail: number;
   duration: string;
+  reportFile: string | null;
+  logFile: string | null;
 };
-
 
 export default function ReportsPage() {
   const { toast } = useToast();
   const [reports, setReports] = useState<Report[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   const loadReports = async () => {
     setIsLoading(true);
-    // Ensure this runs only on the client
+    setError(null);
     if (typeof window !== 'undefined') {
       try {
         const history = localStorage.getItem('robotMaestroRuns');
         if (history) {
           const runs = JSON.parse(history);
-          const formattedReports = runs.map((run: any, index: number) => ({
-            id: `RUN-${new Date(run.date).getTime()}-${index}`,
+          const formattedReports: Report[] = runs.map((run: any, index: number) => ({
+            id: run.id || `RUN-${new Date(run.date).getTime()}-${index}`,
             suite: run.suite,
             status: run.status,
             timestamp: new Date(run.date).toLocaleString(),
             duration: run.duration,
             pass: run.pass,
             fail: run.fail,
-          })).reverse(); // Show newest first
+            reportFile: run.reportFile || null,
+            logFile: run.logFile || null,
+          })).reverse();
           setReports(formattedReports);
         }
       } catch (e) {
         console.error("Failed to parse run history from localStorage", e);
-        toast({
-          variant: 'destructive',
-          title: 'Could not load reports',
-          description: 'There was an issue reading your execution history.'
-        });
+        setError('Could not load reports from local history. Data may be corrupt.');
       }
     }
     setIsLoading(false);
@@ -74,28 +76,98 @@ export default function ReportsPage() {
   useEffect(() => {
     loadReports();
 
-    window.addEventListener('runsUpdated', loadReports);
+    const handleStorageChange = () => {
+        loadReports();
+    };
+    
+    window.addEventListener('storage', handleStorageChange);
+    window.addEventListener('runsUpdated', handleStorageChange);
     
     return () => {
-        window.removeEventListener('runsUpdated', loadReports);
+        window.removeEventListener('storage', handleStorageChange);
+        window.removeEventListener('runsUpdated', handleStorageChange);
     };
 
-  }, [toast]);
+  }, []);
 
-  const handleViewReport = (reportId: string) => {
-    toast({
-      title: 'Opening Report',
-      description: `This feature is coming soon! You will be able to view detailed HTML reports here.`,
-    });
+  const handleViewReport = (report: Report) => {
+    if (report.reportFile) {
+      window.open(`/api/get-report/${report.reportFile}`, '_blank');
+    } else {
+      toast({
+        variant: 'destructive',
+        title: 'Report Not Available',
+        description: 'The HTML report for this run was not generated or archived.',
+      });
+    }
+  };
+  
+  const handleDownload = (report: Report, type: 'report' | 'log') => {
+      const file = type === 'report' ? report.reportFile : report.logFile;
+      if (file) {
+          window.open(`/api/get-report/${file}?download=true`);
+      } else {
+          toast({ variant: 'destructive', title: 'File not available' });
+      }
   };
 
-  const handleDownloadReport = (reportId: string) => {
-    toast({
-      title: 'Downloading Report',
-      description: `This feature is coming soon! You will be able to download reports here.`,
-    });
+  const handleDeleteRun = async (runId: string) => {
+    const reportToDelete = reports.find(r => r.id === runId);
+    if (!reportToDelete) return;
+
+    // Optimistically update the UI
+    const originalReports = [...reports];
+    setReports(reports.filter(r => r.id !== runId));
+
+    try {
+        // Delete from localStorage
+        const history = localStorage.getItem('robotMaestroRuns');
+        if (history) {
+            const runs = JSON.parse(history);
+            const updatedRuns = runs.filter((run: any) => (run.id || `RUN-${new Date(run.date).getTime()}`) !== runId);
+            localStorage.setItem('robotMaestroRuns', JSON.stringify(updatedRuns));
+        }
+
+        // Delete files from backend
+        if (reportToDelete.reportFile) {
+            await fetch(`/api/delete-report/${reportToDelete.reportFile}`, { method: 'DELETE' });
+        }
+        if (reportToDelete.logFile) {
+            await fetch(`/api/delete-report/${reportToDelete.logFile}`, { method: 'DELETE' });
+        }
+
+        toast({ title: 'Run Deleted', description: 'The run and its associated reports have been removed.' });
+        
+    } catch (e) {
+        console.error("Failed to delete run:", e);
+        // Revert UI if deletion fails
+        setReports(originalReports);
+        toast({
+            variant: 'destructive',
+            title: 'Deletion Failed',
+            description: 'Could not delete the run. Please check the backend server and try again.'
+        });
+    }
   };
 
+  if (error) {
+    return (
+        <div className="space-y-6">
+            <h1 className="font-headline text-3xl font-bold tracking-tight">
+                Reports & Logs
+            </h1>
+            <Alert variant="destructive">
+                <ServerCrash className="h-4 w-4" />
+                <AlertTitle>Failed to Load Reports</AlertTitle>
+                <AlertDescription>{error}</AlertDescription>
+                <Button variant="secondary" size="sm" onClick={loadReports} className="mt-4">
+                    <RefreshCw className="mr-2 h-4 w-4"/>
+                    Try Again
+                </Button>
+            </Alert>
+        </div>
+    )
+  }
 
   return (
     <div className="space-y-6">
@@ -106,15 +178,14 @@ export default function ReportsPage() {
         <CardHeader>
           <CardTitle className="font-headline">Execution History</CardTitle>
           <CardDescription>
-            Browse and download detailed reports for all past test executions.
+            Browse, view, and download detailed HTML reports for all past test executions.
           </CardDescription>
         </CardHeader>
         <CardContent>
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>Run ID</TableHead>
-                <TableHead>Test Suite</TableHead>
+                <TableHead>Test Suite / Run</TableHead>
                 <TableHead>Status</TableHead>
                 <TableHead>Timestamp</TableHead>
                 <TableHead>Duration</TableHead>
@@ -127,30 +198,26 @@ export default function ReportsPage() {
               {isLoading ? (
                 Array.from({length: 5}).map((_, i) => (
                   <TableRow key={i}>
-                    <TableCell><Skeleton className="h-5 w-32" /></TableCell>
                     <TableCell><Skeleton className="h-5 w-48" /></TableCell>
                     <TableCell><Skeleton className="h-6 w-20" /></TableCell>
                     <TableCell><Skeleton className="h-5 w-40" /></TableCell>
                     <TableCell><Skeleton className="h-5 w-16" /></TableCell>
                     <TableCell className="text-center"><Skeleton className="h-5 w-8 mx-auto" /></TableCell>
                     <TableCell className="text-center"><Skeleton className="h-5 w-8 mx-auto" /></TableCell>
-                    <TableCell className="text-right"><Skeleton className="h-8 w-20 ml-auto" /></TableCell>
+                    <TableCell className="text-right"><Skeleton className="h-8 w-32 ml-auto" /></TableCell>
                   </TableRow>
                 ))
               ) : reports.length > 0 ? (
                 reports.map((report) => (
                     <TableRow key={report.id}>
-                    <TableCell className="font-mono text-xs">
-                        {report.id}
-                    </TableCell>
-                    <TableCell className="font-medium">{report.suite}</TableCell>
+                    <TableCell className="font-medium max-w-xs truncate">{report.suite}</TableCell>
                     <TableCell>
                         <Badge
-                          variant={report.status === 'Success' ? 'default' : 'destructive'}
+                          variant={report.status === 'Success' ? 'default' : report.status === 'Failed' ? 'destructive' : 'secondary'}
                           className={
                               report.status === 'Success'
                               ? 'border-transparent bg-green-500/20 text-green-700 dark:bg-green-500/10 dark:text-green-400'
-                              : ''
+                              : report.status === 'Stopped' ? 'bg-yellow-500/20 text-yellow-700 dark:bg-yellow-500/10 dark:text-yellow-400' : ''
                           }
                         >
                           {report.status}
@@ -165,14 +232,34 @@ export default function ReportsPage() {
                         {report.fail}
                     </TableCell>
                     <TableCell className="text-right">
-                        <Button variant="outline" size="icon" className="mr-2" onClick={() => handleViewReport(report.id)}>
-                        <Eye className="h-4 w-4" />
-                        <span className="sr-only">View Report</span>
+                        <Button variant="outline" size="icon" className="mr-2" onClick={() => handleViewReport(report)} disabled={!report.reportFile}>
+                            <Eye className="h-4 w-4" />
+                            <span className="sr-only">View Report</span>
                         </Button>
-                        <Button variant="outline" size="icon" onClick={() => handleDownloadReport(report.id)}>
-                        <Download className="h-4 w-4" />
-                        <span className="sr-only">Download Report</span>
+                        <Button variant="outline" size="icon" className="mr-2" onClick={() => handleDownload(report, 'report')} disabled={!report.reportFile}>
+                            <Download className="h-4 w-4" />
+                            <span className="sr-only">Download HTML Report</span>
                         </Button>
+                         <AlertDialog>
+                            <AlertDialogTrigger asChild>
+                                <Button variant="destructive" size="icon">
+                                    <Trash2 className="h-4 w-4" />
+                                    <span className="sr-only">Delete Run</span>
+                                </Button>
+                            </AlertDialogTrigger>
+                            <AlertDialogContent>
+                                <AlertDialogHeader>
+                                <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
+                                <AlertDialogDescription>
+                                    This action will permanently delete this run history and its associated log and report files. This cannot be undone.
+                                </AlertDialogDescription>
+                                </AlertDialogHeader>
+                                <AlertDialogFooter>
+                                <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                <AlertDialogAction onClick={() => handleDeleteRun(report.id)}>Continue</AlertDialogAction>
+                                </AlertDialogFooter>
+                            </AlertDialogContent>
+                        </AlertDialog>
                     </TableCell>
                     </TableRow>
                 ))

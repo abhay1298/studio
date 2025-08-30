@@ -57,16 +57,21 @@ export function ExecutionProvider({ children }: { children: ReactNode }) {
     status: 'Success' | 'Failed' | 'Stopped', 
     duration: string, 
     passCount: number, 
-    failCount: number
+    failCount: number,
+    reportFile: string | null,
+    logFile: string | null
   ) => {
       if (typeof window !== 'undefined') {
           const newRun = {
+              id: `RUN-${new Date().getTime()}`, // Add unique ID
               suite: suiteName,
               status,
               duration,
               date: new Date().toISOString(),
               pass: passCount,
               fail: failCount,
+              reportFile,
+              logFile
           };
           const history = localStorage.getItem('robotMaestroRuns');
           const runs = history ? JSON.parse(history) : [];
@@ -117,7 +122,7 @@ export function ExecutionProvider({ children }: { children: ReactNode }) {
             const errorMessage = result.message || 'The execution server returned an error.';
             addLog(`Execution failed: ${errorMessage}`);
             setStatus("failed");
-            saveRunToHistory(suiteName, 'Failed', duration, 0, 1);
+            saveRunToHistory(suiteName, 'Failed', duration, 0, 1, null, null);
             toast({
                 variant: "destructive",
                 title: "Execution Error",
@@ -135,7 +140,9 @@ export function ExecutionProvider({ children }: { children: ReactNode }) {
             result.status === 'success' ? 'Success' : 'Failed', 
             duration,
             result.pass_count || 0,
-            result.fail_count || 0
+            result.fail_count || 0,
+            result.reportFile || null,
+            result.logFile || null
         );
 
         if (result.status === 'success') {
@@ -165,14 +172,14 @@ export function ExecutionProvider({ children }: { children: ReactNode }) {
         let toastTitle = "Execution Error";
         let toastDescription = "An unexpected error occurred. Please try again.";
 
-        if (error instanceof TypeError && error.message === 'fetch failed') {
+        if (error instanceof TypeError && error.message.includes('fetch')) {
             toastTitle = "Connection Error";
             toastDescription = "Could not connect to the execution service. Please ensure the Python backend is running.";
         }
         
         addLog(`Execution failed: ${toastDescription}`);
         setStatus("failed");
-        saveRunToHistory(suiteName, 'Failed', duration, 0, 1);
+        saveRunToHistory(suiteName, 'Failed', duration, 0, 1, null, null);
         toast({
             variant: "destructive",
             title: toastTitle,
