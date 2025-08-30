@@ -1,4 +1,3 @@
-
 "use client";
 
 import * as React from 'react';
@@ -16,40 +15,64 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Button, buttonVariants } from '@/components/ui/button';
 import { useToast } from '@/hooks/use-toast';
-import { UploadCloud, FileCheck2, FileWarning, FileX2, Pencil, GitBranch, Loader2 } from 'lucide-react';
+import { UploadCloud, FileCheck2, FileWarning, FileX2, Pencil, GitBranch, Loader2, FolderArchive, FileSpreadsheet } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../ui/tabs';
+import * as JSZip from 'jszip';
 
 
 type ProjectUploadProps = {
-  onProjectFileChange: (file: File | null) => void;
-  projectFile: File | null;
 };
 
 // Helper to create a mock data file for the simulation
-const createMockDataFile = () => {
-    const csvContent = `test_case,user,password,id,priority
-TC_001,user1,pass1,TC_001,High
-TC_002,user2,pass2,TC_002,Medium`;
-    const blob = new Blob([csvContent], { type: 'text/csv' });
-    return new File([blob], "test_data.csv", { type: "text/csv" });
+const createMockDataFile = (content: string | ArrayBuffer, name: string): File => {
+    const blob = new Blob([content]);
+    return new File([blob], name);
 };
 
-export function ProjectUpload({ onProjectFileChange, projectFile }: ProjectUploadProps) {
+
+export function ProjectUpload(props: ProjectUploadProps) {
   const { toast } = useToast();
   const router = useRouter();
+  const [projectFile, setProjectFile] = useState<File | null>(null);
   const [dataFile, setDataFile] = useState<File | null>(null);
   const [gitUrl, setGitUrl] = useState('');
   const [isCloning, setIsCloning] = useState(false);
 
   React.useEffect(() => {
-    // Restore data file state from sessionStorage on component mount
+    // Restore file state from sessionStorage on component mount
+    const storedProjectFileName = sessionStorage.getItem('uploadedProjectFileName');
+     if (storedProjectFileName) {
+        const dummyProjectFile = new File([], storedProjectFileName, { type: 'application/zip' });
+        setProjectFile(dummyProjectFile);
+    }
     const storedDataFileName = sessionStorage.getItem('uploadedDataFileName');
     if (storedDataFileName) {
         const dummyDataFile = new File([], storedDataFileName, { type: 'text/csv' });
         setDataFile(dummyDataFile);
     }
   }, []);
+
+  const clearProjectFile = () => {
+    setProjectFile(null);
+    if (typeof window !== 'undefined') {
+      sessionStorage.removeItem('uploadedProjectFileName');
+      window.dispatchEvent(new CustomEvent('projectUpdated'));
+    }
+    toast({ title: 'Project Cleared', description: 'The active project has been removed.' });
+  };
+  
+  const clearDataFile = () => {
+    setDataFile(null);
+    if (typeof window !== 'undefined') {
+      sessionStorage.removeItem('uploadedDataFile');
+      sessionStorage.removeItem('uploadedDataFileName');
+      sessionStorage.removeItem('editedDataHeaders');
+      sessionStorage.removeItem('editedDataRows');
+      window.dispatchEvent(new Event('storage'));
+    }
+    toast({ title: 'Data File Cleared', description: 'The orchestrator data file has been removed.' });
+  };
 
 
   // This function will be called to simulate loading a data file
@@ -75,23 +98,14 @@ export function ProjectUpload({ onProjectFileChange, projectFile }: ProjectUploa
     });
   };
 
-  const handleFileChange = (
+  const handleFileChange = async (
     e: React.ChangeEvent<HTMLInputElement>,
     fileType: 'project' | 'data'
   ) => {
     const file = e.target.files?.[0];
     if (!file) {
-      if (fileType === 'project') onProjectFileChange(null);
-      if (fileType === 'data') {
-        setDataFile(null);
-        if (typeof window !== 'undefined') {
-          sessionStorage.removeItem('uploadedDataFile');
-          sessionStorage.removeItem('uploadedDataFileName');
-          sessionStorage.removeItem('editedDataHeaders');
-          sessionStorage.removeItem('editedDataRows');
-          window.dispatchEvent(new Event('storage'));
-        }
-      }
+      if (fileType === 'project') clearProjectFile();
+      if (fileType === 'data') clearDataFile();
       return;
     }
 
@@ -106,15 +120,31 @@ export function ProjectUpload({ onProjectFileChange, projectFile }: ProjectUploa
     if (fileType === 'project') {
       if (allowedProjectTypes.includes(file.type)) {
         isValid = true;
-        onProjectFileChange(file); // This will trigger the parsing in the parent
+        setProjectFile(file);
+        sessionStorage.setItem('uploadedProjectFileName', file.name);
 
-        // SIMULATION: Check if project contains a data file
-        if (file.name.includes("with-data")) {
-            const mockData = createMockDataFile();
-            autoLoadDataFile(mockData);
+        // Check for data file inside zip
+        try {
+            const zip = await JSZip.loadAsync(file);
+            let dataFileFound: JSZip.JSZipObject | null = null;
+            zip.forEach((relativePath, zipEntry) => {
+                if (relativePath.toLowerCase().endsWith('.csv') || relativePath.toLowerCase().endsWith('.xlsx')) {
+                    dataFileFound = zipEntry;
+                }
+            });
+
+            if (dataFileFound) {
+                const content = await dataFileFound.async('arraybuffer');
+                const mockFile = createMockDataFile(content, dataFileFound.name);
+                autoLoadDataFile(mockFile);
+            }
+        } catch (error) {
+            console.error("Error reading zip file:", error);
+            toast({ variant: 'destructive', title: 'Could not inspect zip file.' });
         }
+        
       } else {
-        onProjectFileChange(null);
+        setProjectFile(null);
       }
     } else if (fileType === 'data') {
       if (allowedDataTypes.includes(file.type)) {
@@ -133,13 +163,6 @@ export function ProjectUpload({ onProjectFileChange, projectFile }: ProjectUploa
         reader.readAsDataURL(file);
       } else {
         setDataFile(null);
-         if (typeof window !== 'undefined') {
-          sessionStorage.removeItem('uploadedDataFile');
-          sessionStorage.removeItem('uploadedDataFileName');
-          sessionStorage.removeItem('editedDataHeaders');
-          sessionStorage.removeItem('editedDataRows');
-          window.dispatchEvent(new Event('storage'));
-        }
       }
     }
 
@@ -149,22 +172,16 @@ export function ProjectUpload({ onProjectFileChange, projectFile }: ProjectUploa
         description: `${file.name}`,
         action: <FileCheck2 className="text-green-500" />,
       });
+      if (fileType === 'project') {
+        window.dispatchEvent(new CustomEvent('projectUpdated'));
+      }
     } else {
-       if (file.size === 0) {
-        toast({
-          variant: 'destructive',
-          title: 'Warning: Empty File',
-          description: `${file.name} appears to be empty.`,
-          action: <FileWarning className="text-yellow-500" />,
-        });
-      } else {
         toast({
           variant: 'destructive',
           title: 'Error: Invalid File Format',
           description: `Please upload a valid ${fileType} file.`,
           action: <FileX2 className="text-red-500" />,
         });
-      }
     }
   };
   
@@ -182,39 +199,36 @@ export function ProjectUpload({ onProjectFileChange, projectFile }: ProjectUploa
         return;
     }
     setIsCloning(true);
+    // This is a simulation
     setTimeout(() => {
         setIsCloning(false);
         const repoName = gitUrl.split('/').pop()?.replace('.git', '') || 'repository';
         const dummyFile = new File([], `${repoName}.zip`, { type: 'application/zip'});
-        onProjectFileChange(dummyFile);
+        setProjectFile(dummyFile);
+        sessionStorage.setItem('uploadedProjectFileName', dummyFile.name);
+        window.dispatchEvent(new CustomEvent('projectUpdated'));
         
         toast({
             title: 'Repository Imported',
             description: `Successfully imported project from '${repoName}'.`,
             action: <GitBranch className="text-green-500" />,
         });
-
-        // SIMULATION: Check if imported project contains a data file
-        if (repoName.includes("with-data")) {
-            const mockData = createMockDataFile();
-            autoLoadDataFile(mockData);
-        }
-
     }, 2000);
   };
   
   return (
+    <div className="grid md:grid-cols-2 gap-6">
     <Card>
       <CardHeader>
         <CardTitle className="font-headline">Load Project</CardTitle>
         <CardDescription>
-          Upload your project zip or import from Git to get started.
+          Upload your project zip or import from Git to get started. Note: This does not transfer files to the backend; it's for UI simulation.
         </CardDescription>
       </CardHeader>
       
-      {!projectFile && (
+      {!projectFile ? (
         <Tabs defaultValue="upload" className="w-full">
-            <TabsList className="grid w-full grid-cols-2">
+            <TabsList className="grid w-full grid-cols-2 mx-6" style={{width: 'calc(100% - 3rem)'}}>
                 <TabsTrigger value="upload" disabled={isCloning}>
                     <UploadCloud className="mr-2 h-4 w-4" />
                     File Upload
@@ -266,37 +280,67 @@ export function ProjectUpload({ onProjectFileChange, projectFile }: ProjectUploa
                 </CardContent>
             </TabsContent>
         </Tabs>
+      ) : (
+        <CardContent>
+             <div className="bg-muted/50 rounded-lg p-4">
+                <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                        <FolderArchive className="h-6 w-6 text-primary"/>
+                        <div className="flex flex-col">
+                            <span className="font-semibold">Active Project</span>
+                            <span className="text-sm text-muted-foreground truncate max-w-xs">{projectFile.name}</span>
+                        </div>
+                    </div>
+                    <Button variant="destructive" size="sm" onClick={clearProjectFile}>Clear</Button>
+                </div>
+            </div>
+        </CardContent>
       )}
 
-      <Separator className="my-4" />
+    </Card>
 
-      <CardHeader className="pt-0">
-         <CardTitle className="font-headline text-lg">Orchestrator Data</CardTitle>
+    <Card>
+       <CardHeader>
+         <CardTitle className="font-headline">Orchestrator Data</CardTitle>
          <CardDescription>
           Upload and manage the Excel or CSV file for orchestrator runs.
         </CardDescription>
       </CardHeader>
       <CardContent>
-        <div className="grid gap-2">
-          <Label htmlFor="data-file">Test Data File (.xlsx, .csv)</Label>
-          <div className="flex items-center gap-2">
-              <Label htmlFor="data-file" className={cn(
-              "flex items-center gap-2 cursor-pointer",
-              buttonVariants({ variant: 'outline' })
-              )}>
-              <UploadCloud />
-              <span className="font-bold">Choose file</span>
-              </Label>
-              <Input
-              id="data-file"
-              type="file"
-              className="hidden"
-              accept=".xlsx,.csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/csv"
-              onChange={(e) => handleFileChange(e, 'data')}
-              />
-              {dataFile && <span className="text-sm text-muted-foreground truncate">{dataFile.name}</span>}
-          </div>
-        </div>
+        {!dataFile ? (
+            <div className="grid gap-2">
+            <Label htmlFor="data-file">Test Data File (.xlsx, .csv)</Label>
+            <div className="flex items-center gap-2">
+                <Label htmlFor="data-file" className={cn(
+                "flex items-center gap-2 cursor-pointer",
+                buttonVariants({ variant: 'outline' })
+                )}>
+                <UploadCloud />
+                <span className="font-bold">Choose file</span>
+                </Label>
+                <Input
+                id="data-file"
+                type="file"
+                className="hidden"
+                accept=".xlsx,.csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/csv"
+                onChange={(e) => handleFileChange(e, 'data')}
+                />
+            </div>
+            </div>
+        ) : (
+            <div className="bg-muted/50 rounded-lg p-4">
+                 <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                        <FileSpreadsheet className="h-6 w-6 text-accent"/>
+                        <div className="flex flex-col">
+                            <span className="font-semibold">Data File Loaded</span>
+                            <span className="text-sm text-muted-foreground truncate max-w-xs">{dataFile.name}</span>
+                        </div>
+                    </div>
+                    <Button variant="destructive" size="sm" onClick={clearDataFile}>Clear</Button>
+                </div>
+            </div>
+        )}
       </CardContent>
        
        {dataFile && (
@@ -308,6 +352,7 @@ export function ProjectUpload({ onProjectFileChange, projectFile }: ProjectUploa
         </CardFooter>
       )}
     </Card>
+    </div>
   );
 }
 

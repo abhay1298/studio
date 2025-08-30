@@ -1,4 +1,3 @@
-
 "use client";
 
 import {
@@ -10,12 +9,13 @@ import {
   SidebarFooter,
   SidebarContent
 } from "@/components/ui/sidebar";
-import { Bot, LayoutDashboard, PlayCircle, BarChart3, FileText, Settings, BookOpen, Pencil, PackageSearch } from "lucide-react";
+import { Bot, LayoutDashboard, PlayCircle, BarChart3, FileText, Settings, BookOpen, Pencil, PackageSearch, FolderGit } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
 const menuItems = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
+  { href: "/dashboard/project-management", label: "Project Management", icon: FolderGit },
   { href: "/dashboard/project-explorer", label: "Project Explorer", icon: PackageSearch },
   { href: "/dashboard/execution", label: "Execution", icon: PlayCircle },
   { href: "/dashboard/results", label: "Results", icon: BarChart3 },
