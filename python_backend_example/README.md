@@ -12,12 +12,11 @@ This server exposes a single endpoint, `/run`, which the Next.js frontend calls 
 1.  **Prerequisites**:
     *   Python 3.6+
     *   pip
-    *   Robot Framework (`pip install robotframework`)
 
 2.  **Installation**:
-    Navigate to this directory in your terminal and install the required libraries:
+    Navigate to this directory in your terminal and install the required libraries from the `requirements.txt` file:
     ```sh
-    pip install Flask Flask-Cors robotframework
+    pip install -r requirements.txt
     ```
 
 3.  **Configuration**:

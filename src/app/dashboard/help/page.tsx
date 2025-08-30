@@ -79,9 +79,9 @@ export default function HelpPage() {
               <div>
                 <h4 className="font-semibold">Install Dependencies</h4>
                 <p className="text-muted-foreground mb-2">
-                  In your new terminal, install the required Python libraries:
+                  In your new terminal, install the required Python libraries using the provided requirements file:
                 </p>
-                <pre className="bg-muted p-2 rounded-md font-mono text-sm">pip install Flask Flask-Cors robotframework</pre>
+                <pre className="bg-muted p-2 rounded-md font-mono text-sm">pip install -r requirements.txt</pre>
               </div>
             </div>
              <div className="flex items-start gap-4">
