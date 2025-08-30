@@ -27,6 +27,8 @@ export async function POST(req: NextRequest) {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json',
+            // It's good practice to accept JSON responses
+            'Accept': 'application/json',
         },
         body: JSON.stringify({
             // Pass the configuration received from the frontend
@@ -40,13 +42,25 @@ export async function POST(req: NextRequest) {
     if (!backendResponse.ok) {
         const errorText = await backendResponse.text();
         console.error('Execution backend returned an error:', backendResponse.status, errorText);
-        return NextResponse.json(
-            {
-                status: 'error',
-                message: `Execution backend failed: ${errorText}`,
-            },
-            { status: backendResponse.status }
-        );
+        // Try to parse the error as JSON, but fall back to text
+        try {
+            const errorJson = JSON.parse(errorText);
+             return NextResponse.json(
+                {
+                    status: 'error',
+                    message: `Execution backend failed: ${errorJson.message || errorText}`,
+                },
+                { status: backendResponse.status }
+            );
+        } catch(e) {
+             return NextResponse.json(
+                {
+                    status: 'error',
+                    message: `Execution backend failed: ${errorText}`,
+                },
+                { status: backendResponse.status }
+            );
+        }
     }
 
     // Get the JSON response from the backend (which should include status and logs)
@@ -62,10 +76,10 @@ export async function POST(req: NextRequest) {
     return NextResponse.json(
       {
         status: 'error',
-        message: 'Failed to connect to the execution backend.',
+        message: 'Failed to connect to the execution backend. Is the Python server running?',
         details: errorMessage,
       },
-      {status: 500}
+      {status: 500} // Use 500 for server-side errors like failing to connect
     );
   }
 }

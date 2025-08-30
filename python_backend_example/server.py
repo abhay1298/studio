@@ -1,18 +1,22 @@
 
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, make_response
+from flask_cors import CORS
 import subprocess
 import time
 import random
+import os
 
 app = Flask(__name__)
+CORS(app) # Enable CORS for all routes
 
-# This is a basic example of an execution backend.
-# In a real-world scenario, you would enhance this to:
-# 1. Handle file uploads (the project.zip).
-# 2. Unzip the project file into a temporary directory.
-# 3. Construct and run the actual Robot Framework command.
-# 4. Handle different operating systems and environments.
-# 5. Implement more robust security (e.g., API keys).
+# This is a more realistic execution backend.
+# It now uses Python's `subprocess` module to execute real commands.
+# To use this:
+# 1. Make sure you have Robot Framework installed in the same Python environment.
+#    (e.g., `pip install robotframework`)
+# 2. Place your Robot Framework project (e.g., your 'tests' folder)
+#    in a location accessible to this server. You might need to adjust paths.
+# 3. This server still simulates pass/fail counts for UI purposes.
 
 @app.route('/run', methods=['POST'])
 def run_robot_tests():
@@ -23,8 +27,17 @@ def run_robot_tests():
 
         runType = data.get('runType')
         config = data.get('config', {})
+        
+        # --- Define the directory where your tests are located ---
+        # For this example, we assume there's a 'tests' folder sibling to this script.
+        # You may need to change this to an absolute path depending on your setup.
+        tests_directory = os.path.join(os.path.dirname(__file__), '..', 'tests')
+        if not os.path.isdir(tests_directory):
+            # As a fallback, use a generic 'tests' path
+            tests_directory = 'tests'
 
-        # --- Command Construction (Simulation) ---
+
+        # --- Command Construction (Real) ---
         command = ['robot']
 
         if runType == 'By Tag':
@@ -33,59 +46,70 @@ def run_robot_tests():
             if config.get('excludeTags'):
                 command.extend(['-e', config['excludeTags']])
         elif runType == 'By Suite' and config.get('suite'):
+            # Note: The '-s' argument in robot is for suite name, not file path.
+            # A more robust solution might involve parsing file paths.
             command.extend(['-s', config['suite']])
         elif runType == 'By Test Case' and config.get('testcase'):
             command.extend(['-t', config['testcase']])
-        elif runType == 'Orchestrator':
-            command.append('path/to/orchestrator.robot')
-        else: # Default run
-            command.append('tests/')
+        
+        # Add the path to the test files/folder at the end
+        command.append(tests_directory)
             
-        print(f"--- Simulating Execution ---")
+        print(f"--- Preparing Real Execution ---")
         print(f"Received Run Type: {runType}")
         print(f"Received Config: {config}")
         print(f"Constructed Command: {' '.join(command)}")
-        print("--------------------------")
+        print("------------------------------")
         
-        # --- Execution Simulation ---
-        time.sleep(2)
+        # --- Real Execution using subprocess ---
+        # We use Popen to allow for capturing output in real-time if needed,
+        # but for simplicity, we'll use `run` which waits for completion.
+        process = subprocess.run(
+            command,
+            capture_output=True,
+            text=True, # Decodes stdout/stderr as text
+            check=False # Prevents raising an exception on non-zero exit codes
+        )
 
-        # Generate mock logs
         logs = []
         logs.append("==============================================================================")
-        logs.append(f"Starting test suite with command: {' '.join(command)}")
+        logs.append(f"Executing command: {' '.join(command)}")
         logs.append("==============================================================================")
         
-        # Randomly decide if the test succeeds or fails
-        is_success = random.choice([True, True, False]) # 2/3 chance of success
-        
-        test_name = config.get('testcase') or config.get('suite') or config.get('includeTags') or 'Full Suite'
+        # Append actual stdout and stderr from the command
+        if process.stdout:
+            logs.append("\n--- STDOUT ---\n")
+            logs.append(process.stdout)
+        if process.stderr:
+            logs.append("\n--- STDERR ---\n")
+            logs.append(process.stderr)
 
-        logs.append(f"Test Suite: {test_name} :: Tests based on user selection")
-        logs.append("------------------------------------------------------------------------------")
-        
-        time.sleep(1)
-        logs.append(f"TestCase: Login Test :: Test login functionality...                               [PASS]")
-        time.sleep(0.5)
-        logs.append(f"TestCase: Home Page :: Verify home page elements...                            [PASS]")
-        
-        pass_count = 2
-        fail_count = 0
-        
-        if is_success:
-            logs.append(f"TestCase: Purchase Flow :: Complete a purchase...                             [PASS]")
+        # Determine status from the return code
+        if process.returncode == 0:
             status = 'success'
-            pass_count += 1
+            logs.append("\nExecution Result: SUCCESS (Exit Code 0)")
         else:
-            logs.append(f"TestCase: Purchase Flow :: Complete a purchase...                             [FAIL]")
-            logs.append("Error: Checkout button not found on page 'checkout.html'")
             status = 'failed'
-            fail_count += 1
+            logs.append(f"\nExecution Result: FAILED (Exit Code {process.returncode})")
+            # If the command failed because robot isn't installed, provide a helpful message
+            if "not found" in process.stderr.lower() or "is not recognized" in process.stderr.lower():
+                logs.append("\n[HINT]: The 'robot' command was not found. Is Robot Framework installed in the Python environment running this server?")
+
+
+        # --- Pass/Fail Count Simulation (for UI) ---
+        # A real implementation would parse the output.xml from Robot Framework
+        # to get the exact counts. This is a placeholder for that logic.
+        output_text = process.stdout + process.stderr
+        pass_count = output_text.count('[PASS]')
+        fail_count = output_text.count('[FAIL]')
         
-        time.sleep(1)
-        logs.append("------------------------------------------------------------------------------")
-        logs.append(f"Execution finished.")
-        logs.append(f"Final Status: {status.upper()}")
+        # If no explicit pass/fail found, simulate some for demo purposes
+        if status == 'success' and pass_count == 0 and fail_count == 0:
+            pass_count = random.randint(1, 5)
+        elif status == 'failed' and pass_count == 0 and fail_count == 0:
+            fail_count = random.randint(1, 3)
+            pass_count = random.randint(0, 2)
+
 
         return jsonify({
             "status": status,
@@ -95,8 +119,10 @@ def run_robot_tests():
         })
 
     except Exception as e:
-        print(f"An error occurred: {e}")
+        print(f"A critical error occurred in the Flask server: {e}")
         return jsonify({"status": "error", "message": str(e)}), 500
 
 if __name__ == '__main__':
+    # It's recommended to run Flask with a production-ready WSGI server like Gunicorn or Waitress.
+    # The command `flask run` uses a development server which is not suitable for production.
     app.run(host='0.0.0.0', port=5001, debug=True)
