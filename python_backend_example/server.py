@@ -184,12 +184,16 @@ def run_robot_tests():
         print(f"Constructed Command: {' '.join(command)}")
         
         # --- Real Execution using subprocess ---
+        # This is now NON-BLOCKING
         robot_process = subprocess.Popen(
             command,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             text=True,
-            creationflags=subprocess.CREATE_NEW_PROCESS_GROUP if os.name == 'nt' else 0
+            # Use CREATE_NEW_PROCESS_GROUP on Windows to allow sending Ctrl+C
+            # Use preexec_fn=os.setsid on Unix-like systems to create a new process group
+            creationflags=subprocess.CREATE_NEW_PROCESS_GROUP if os.name == 'nt' else 0,
+            preexec_fn=os.setsid if os.name != 'nt' else None
         )
         
         stdout, stderr = robot_process.communicate()
@@ -279,17 +283,27 @@ def stop_robot_tests():
     global robot_process
     if robot_process and robot_process.poll() is None:
         try:
-            print(f"--- Terminating Process PID: {robot_process.pid} ---")
+            print(f"--- Terminating Process Group PID: {robot_process.pid} ---")
             if os.name == 'nt':
-                 os.kill(robot_process.pid, signal.CTRL_C_EVENT)
+                 # Sends a Ctrl+C signal to the process group on Windows
+                 robot_process.send_signal(signal.CTRL_C_EVENT)
             else:
+                 # Sends SIGTERM to the entire process group on Unix-like systems
                  os.killpg(os.getpgid(robot_process.pid), signal.SIGTERM)
             
+            # Wait a bit for the process to terminate gracefully
             robot_process.wait(timeout=5)
             robot_process = None
+            print("--- Process terminated successfully ---")
             return jsonify({"status": "success", "message": "Execution stopped successfully."}), 200
+        except subprocess.TimeoutExpired:
+            print("--- Process did not terminate in time, killing forcefully ---")
+            robot_process.kill()
+            robot_process = None
+            return jsonify({"status": "success", "message": "Execution stopped forcefully."}), 200
         except Exception as e:
             print(f"Error stopping process: {e}")
+            robot_process = None
             return jsonify({"status": "error", "message": f"Failed to stop process: {e}"}), 500
     else:
         return jsonify({"status": "info", "message": "No execution running to stop."}), 200

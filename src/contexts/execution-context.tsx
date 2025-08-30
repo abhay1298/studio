@@ -68,17 +68,14 @@ const getInitialState = <T,>(key: string, defaultValue: T): T => {
     }
 };
 
-const fileToDataURL = (file: File): Promise<string> => {
+const readFileAsArrayBuffer = (file: File): Promise<ArrayBuffer> => {
     return new Promise((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onload = () => resolve(reader.result as string);
-        reader.onerror = () => {
-            const error = reader.error;
-            reject(new Error(`Failed to read file: ${error ? error.message : 'Unknown error'}`));
-        };
-        reader.readAsDataURL(file);
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result as ArrayBuffer);
+      reader.onerror = () => reject(reader.error);
+      reader.readAsArrayBuffer(file);
     });
-};
+  };
 
 const dataURLtoBlob = (dataurl: string): Blob => {
     const arr = dataurl.split(',');
@@ -316,7 +313,6 @@ export function ExecutionProvider({ children }: { children: ReactNode }) {
 
   const handleStop = useCallback(async () => {
     addLog('Attempting to stop execution...');
-    setStatus('stopped');
     try {
         const response = await fetch('/api/stop-tests', { method: 'POST' });
         if (!response.ok) {
@@ -324,6 +320,7 @@ export function ExecutionProvider({ children }: { children: ReactNode }) {
         }
         const result = await response.json();
         addLog(result.message);
+        setStatus('stopped'); // Set status to stopped only after backend confirmation
         toast({
             title: "Execution Stopped",
             description: "The test run has been terminated.",
@@ -331,6 +328,7 @@ export function ExecutionProvider({ children }: { children: ReactNode }) {
 
     } catch (e) {
         addLog('Failed to stop execution. It may have already completed.');
+        setStatus('failed'); // Assume it failed if stop command fails
         toast({
             variant: "destructive",
             title: "Stop Failed",
@@ -396,7 +394,13 @@ export function ExecutionProvider({ children }: { children: ReactNode }) {
     }
     
     try {
-      const dataUrl = await fileToDataURL(file);
+      const dataUrl = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result as string);
+        reader.onerror = () => reject(new Error(`Failed to read file: ${reader.error ? reader.error.message : 'Unknown error'}`));
+        reader.readAsDataURL(file);
+      });
+
       setDataFileContent(dataUrl);
       setDataFileName(file.name);
       await parseAndSetDataFile(dataUrl, file.name);
@@ -413,15 +417,6 @@ export function ExecutionProvider({ children }: { children: ReactNode }) {
       clearDataFile();
     }
   }, [clearDataFile, parseAndSetDataFile, toast]);
-
-  const readFileAsArrayBuffer = (file: File): Promise<ArrayBuffer> => {
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload = () => resolve(reader.result as ArrayBuffer);
-      reader.onerror = () => reject(reader.error);
-      reader.readAsArrayBuffer(file);
-    });
-  };
 
   const handleProjectFileUpload = useCallback(async (file: File | null) => {
     if (!file) {
@@ -511,5 +506,3 @@ export function useExecutionContext() {
   }
   return context;
 }
-
-    
