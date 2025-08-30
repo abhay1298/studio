@@ -21,6 +21,7 @@ import {
   Download,
   Loader2,
   XCircle,
+  Trash2,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { Alert, AlertDescription, AlertTitle } from "../ui/alert";
@@ -30,7 +31,7 @@ type ExecutionStatus = "idle" | "running" | "success" | "failed";
 
 export function ExecutionPanel() {
   const [status, setStatus] = useState<ExecutionStatus>("idle");
-  const [logs, setLogs] = useState("");
+  const [logs, setLogs] = useState<string[]>([]);
   const { toast } = useToast();
   const [runConfig, setRunConfig] = useState({
     includeTags: '',
@@ -42,9 +43,6 @@ export function ExecutionPanel() {
   const [isDataFileUploaded, setIsDataFileUploaded] = useState(false);
 
   useEffect(() => {
-    // This function will run on the client-side after the component mounts
-    // and whenever the component re-renders. It's a more reliable way
-    // to check the session storage for the data file.
     const checkDataFile = () => {
         if (typeof window !== 'undefined') {
             const file = sessionStorage.getItem('uploadedDataFile');
@@ -53,11 +51,6 @@ export function ExecutionPanel() {
     };
     
     checkDataFile();
-
-    // To ensure it updates if the user navigates back and forth,
-    // we can also listen for storage events, though this is more for
-    // cross-tab communication. A simpler approach for SPAs is to
-    // re-check on focus.
     window.addEventListener('storage', checkDataFile);
     window.addEventListener('focus', checkDataFile);
 
@@ -67,6 +60,10 @@ export function ExecutionPanel() {
     };
   }, []);
 
+  const addLog = (message: string) => {
+    const timestamp = new Date().toLocaleTimeString();
+    setLogs(prev => [...prev, `[${timestamp}] ${message}`]);
+  };
 
   const handleInputChange = (field: keyof typeof runConfig, value: string) => {
     setRunConfig(prev => ({...prev, [field]: value}));
@@ -92,7 +89,6 @@ export function ExecutionPanel() {
           const runs = history ? JSON.parse(history) : [];
           runs.push(newRun);
           localStorage.setItem('robotMaestroRuns', JSON.stringify(runs));
-          // Dispatch an event to notify other components that runs have been updated
           window.dispatchEvent(new CustomEvent('runsUpdated'));
       }
   };
@@ -123,10 +119,10 @@ export function ExecutionPanel() {
       return;
     }
     
-    setLogs(`[${new Date().toLocaleTimeString()}] Starting execution...\n`);
+    setLogs([]);
+    addLog(`Starting ${runType} execution...`);
     setStatus("running");
     setLastFailedLogs('');
-    toast({ title: `Starting ${runType} run...` });
     const startTime = Date.now();
 
     try {
@@ -146,9 +142,9 @@ export function ExecutionPanel() {
 
       if (!response.ok) {
         const errorMessage = result.message || 'The execution server returned an error.';
-        setLogs(currentLogs => currentLogs + `\n[${new Date().toLocaleTimeString()}] Execution failed: ${errorMessage}`);
+        addLog(`Execution failed: ${errorMessage}`);
         setStatus("failed");
-        saveRunToHistory(suiteName, 'Failed', duration, 0, 1); // Save with dummy fail count
+        saveRunToHistory(suiteName, 'Failed', duration, 0, 1);
         toast({
             variant: "destructive",
             title: "Execution Error",
@@ -157,7 +153,8 @@ export function ExecutionPanel() {
         return;
       }
       
-      setLogs(currentLogs => currentLogs + result.logs);
+      addLog("Execution logs received from backend:");
+      setLogs(prev => [...prev, result.logs]);
       setStatus(result.status === 'success' ? 'success' : 'failed');
       saveRunToHistory(
         suiteName, 
@@ -192,15 +189,14 @@ export function ExecutionPanel() {
       let toastTitle = "Execution Error";
       let toastDescription = "An unexpected error occurred. Please try again.";
 
-      // Check for a generic network failure
       if (errorMessage.includes('fetch failed')) {
         toastTitle = "Connection Error";
         toastDescription = "Could not connect to the execution service. Please ensure the Python backend is running. See the 'Help & Docs' page for instructions.";
       }
       
-      setLogs(currentLogs => currentLogs + `\n[${new Date().toLocaleTimeString()}] Execution failed: ${toastDescription}`);
+      addLog(`Execution failed: ${toastDescription}`);
       setStatus("failed");
-      saveRunToHistory(suiteName, 'Failed', duration, 0, 1); // Save with dummy fail count
+      saveRunToHistory(suiteName, 'Failed', duration, 0, 1);
       toast({
         variant: "destructive",
         title: toastTitle,
@@ -208,6 +204,18 @@ export function ExecutionPanel() {
       });
     }
   };
+  
+  const handleDownloadLogs = () => {
+    const logContent = logs.join('\n');
+    const blob = new Blob([logContent], { type: 'text/plain;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.setAttribute("href", url);
+    link.setAttribute("download", `robot-maestro-logs-${new Date().getTime()}.log`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  }
 
   const isRunning = status === "running";
 
@@ -227,9 +235,9 @@ export function ExecutionPanel() {
           <TabsContent value="tag">
             <div className="space-y-4">
               <Label htmlFor="include-tags">Include Tags</Label>
-              <Input id="include-tags" placeholder="e.g., smoke AND critical" value={runConfig.includeTags} onChange={(e) => handleInputChange('includeTags', e.target.value)} />
+              <Input id="include-tags" placeholder="e.g., smoke AND critical" value={runConfig.includeTags} onChange={(e) => handleInputChange('includeTags', e.target.value)} disabled={isRunning} />
               <Label htmlFor="exclude-tags">Exclude Tags</Label>
-              <Input id="exclude-tags" placeholder="e.g., wip" value={runConfig.excludeTags} onChange={(e) => handleInputChange('excludeTags', e.target.value)}/>
+              <Input id="exclude-tags" placeholder="e.g., wip" value={runConfig.excludeTags} onChange={(e) => handleInputChange('excludeTags', e.target.value)} disabled={isRunning}/>
               <Button onClick={() => handleRun("By Tag")} disabled={isRunning}>
                 {isRunning && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                 Run by Tag
@@ -240,7 +248,7 @@ export function ExecutionPanel() {
           <TabsContent value="suite">
             <div className="space-y-4">
               <Label htmlFor="suite-name">Suite Name</Label>
-              <Input id="suite-name" placeholder="e.g., tests/smoke_tests.robot" value={runConfig.suite} onChange={(e) => handleInputChange('suite', e.target.value)} />
+              <Input id="suite-name" placeholder="e.g., tests/smoke_tests.robot" value={runConfig.suite} onChange={(e) => handleInputChange('suite', e.target.value)} disabled={isRunning}/>
               <Button onClick={() => handleRun("By Suite")} disabled={isRunning}>
                  {isRunning && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                 Run by Suite
@@ -251,7 +259,7 @@ export function ExecutionPanel() {
           <TabsContent value="testcase">
             <div className="space-y-4">
               <Label htmlFor="testcase-name">Test Case Name</Label>
-              <Input id="testcase-name" placeholder="e.g., 'User should be able to login'" value={runConfig.testcase} onChange={(e) => handleInputChange('testcase', e.target.value)} />
+              <Input id="testcase-name" placeholder="e.g., 'User should be able to login'" value={runConfig.testcase} onChange={(e) => handleInputChange('testcase', e.target.value)} disabled={isRunning}/>
               <Button onClick={() => handleRun("By Test Case")} disabled={isRunning}>
                 {isRunning && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                 Run Test
@@ -285,7 +293,7 @@ export function ExecutionPanel() {
           </CardHeader>
           <CardContent>
             <ScrollArea className="h-72 w-full rounded-md border bg-muted p-4">
-              <pre className="text-sm font-code whitespace-pre-wrap">{logs}</pre>
+              <pre className="text-sm font-mono whitespace-pre-wrap">{logs.join('\n')}</pre>
             </ScrollArea>
           </CardContent>
           <CardFooter className="flex justify-between">
@@ -299,7 +307,11 @@ export function ExecutionPanel() {
             </div>
             <div className="flex gap-2">
                 {status === 'failed' && <AiAnalysisDialog logs={lastFailedLogs} />}
-                <Button variant="outline" disabled={status === "running"}>
+                <Button variant="outline" onClick={() => setLogs([])} disabled={isRunning || logs.length === 0}>
+                    <Trash2 className="mr-2 h-4 w-4" />
+                    Clear Logs
+                </Button>
+                <Button variant="outline" onClick={handleDownloadLogs} disabled={isRunning || logs.length === 0}>
                     <Download className="mr-2 h-4 w-4" />
                     Download Logs
                 </Button>

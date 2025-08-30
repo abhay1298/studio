@@ -10,7 +10,7 @@ import {
   SidebarFooter,
   SidebarContent
 } from "@/components/ui/sidebar";
-import { Bot, LayoutDashboard, PlayCircle, BarChart3, FileText, Settings, LifeBuoy, BookOpen, Pencil } from "lucide-react";
+import { Bot, LayoutDashboard, PlayCircle, BarChart3, FileText, Settings, BookOpen, Pencil } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
