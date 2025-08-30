@@ -108,7 +108,7 @@ export function ExecutionPanel() {
               <Input id="include-tags" placeholder="e.g., smoke AND critical" value={runConfig.includeTags} onChange={(e) => handleInputChange('includeTags', e.target.value)} disabled={isRunning} />
               <Label htmlFor="exclude-tags">Exclude Tags</Label>
               <Input id="exclude-tags" placeholder="e.g., wip" value={runConfig.excludeTags} onChange={(e) => handleInputChange('excludeTags', e.target.value)} disabled={isRunning}/>
-              <Button onClick={() => handleRunClick("By Tag")} disabled={isRunning}>
+              <Button onClick={() => handleRunClick("By Tag")} disabled={isRunning || !runConfig.includeTags.trim()}>
                 {isRunning && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                 Run by Tag
               </Button>
@@ -119,7 +119,7 @@ export function ExecutionPanel() {
             <div className="space-y-4">
               <Label htmlFor="suite-name">Suite Name</Label>
               <Input id="suite-name" placeholder="e.g., tests/smoke_tests.robot" value={runConfig.suite} onChange={(e) => handleInputChange('suite', e.target.value)} disabled={isRunning}/>
-              <Button onClick={() => handleRunClick("By Suite")} disabled={isRunning}>
+              <Button onClick={() => handleRunClick("By Suite")} disabled={isRunning || !runConfig.suite.trim()}>
                  {isRunning && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                 Run by Suite
               </Button>
@@ -130,7 +130,7 @@ export function ExecutionPanel() {
             <div className="space-y-4">
               <Label htmlFor="testcase-name">Test Case Name</Label>
               <Input id="testcase-name" placeholder="e.g., 'User should be able to login'" value={runConfig.testcase} onChange={(e) => handleInputChange('testcase', e.target.value)} disabled={isRunning}/>
-              <Button onClick={() => handleRunClick("By Test Case")} disabled={isRunning}>
+              <Button onClick={() => handleRunClick("By Test Case")} disabled={isRunning || !runConfig.testcase.trim()}>
                 {isRunning && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                 Run Test
               </Button>
