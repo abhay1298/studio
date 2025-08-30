@@ -11,6 +11,8 @@ import { XCircle } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { FileCheck2 } from 'lucide-react';
+import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
+
 
 const PROJECT_FILE_CONTENT_KEY = 'uploadedProjectFileContent'; // Renamed for clarity
 const PROJECT_FILE_NAME_KEY = 'uploadedProjectFileName';
