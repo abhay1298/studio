@@ -125,22 +125,40 @@ export function ProjectUpload({
       <CardHeader>
         <CardTitle className="font-headline">Load Project</CardTitle>
         <CardDescription>
-          Upload your project zip or import from Git to get started. This will be scanned for a `requirements.txt` file.
+          Upload your project zip or import from Git to get started.
         </CardDescription>
       </CardHeader>
       
       {!projectFileName ? (
-        <Tabs defaultValue="upload" className="w-full">
+        <Tabs defaultValue="git" className="w-full">
             <TabsList className="grid w-full grid-cols-2 mx-6" style={{width: 'calc(100% - 3rem)'}}>
-                <TabsTrigger value="upload" disabled={isCloning}>
-                    <UploadCloud className="mr-2 h-4 w-4" />
-                    File Upload
-                </TabsTrigger>
                 <TabsTrigger value="git" disabled={isCloning}>
                     <GitBranch className="mr-2 h-4 w-4" />
                     Import from Git
                 </TabsTrigger>
+                <TabsTrigger value="upload" disabled={isCloning}>
+                    <UploadCloud className="mr-2 h-4 w-4" />
+                    File Upload
+                </TabsTrigger>
             </TabsList>
+             <TabsContent value="git">
+                <CardContent className="space-y-4 pt-6">
+                    <div className="grid gap-2">
+                        <Label htmlFor="git-url">Git Repository URL</Label>
+                        <Input 
+                            id="git-url" 
+                            placeholder="https://github.com/your/repository.git"
+                            value={gitUrl}
+                            onChange={(e) => setGitUrl(e.target.value)}
+                            disabled={isCloning}
+                        />
+                    </div>
+                    <Button onClick={handleGitImport} disabled={isCloning || !gitUrl.trim()} className="w-full">
+                        {isCloning ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <GitBranch className="mr-2 h-4 w-4" />}
+                        {isCloning ? 'Importing...' : 'Import Project'}
+                    </Button>
+                </CardContent>
+            </TabsContent>
             <TabsContent value="upload">
                 <CardContent className="grid gap-6 pt-6">
                     <div className="grid gap-2">
@@ -162,24 +180,6 @@ export function ProjectUpload({
                         />
                     </div>
                     </div>
-                </CardContent>
-            </TabsContent>
-            <TabsContent value="git">
-                <CardContent className="space-y-4 pt-6">
-                    <div className="grid gap-2">
-                        <Label htmlFor="git-url">Git Repository URL</Label>
-                        <Input 
-                            id="git-url" 
-                            placeholder="https://github.com/your/repository.git"
-                            value={gitUrl}
-                            onChange={(e) => setGitUrl(e.target.value)}
-                            disabled={isCloning}
-                        />
-                    </div>
-                    <Button onClick={handleGitImport} disabled={isCloning || !gitUrl.trim()} className="w-full">
-                        {isCloning ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <GitBranch className="mr-2 h-4 w-4" />}
-                        {isCloning ? 'Importing...' : 'Import Project'}
-                    </Button>
                 </CardContent>
             </TabsContent>
         </Tabs>
