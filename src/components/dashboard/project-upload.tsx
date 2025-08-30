@@ -27,9 +27,9 @@ type ProjectUploadProps = {
 
 // Helper to create a mock data file for the simulation
 const createMockDataFile = () => {
-    const csvContent = `test_case,user,password
-TC_001,user1,pass1
-TC_002,user2,pass2`;
+    const csvContent = `test_case,user,password,id,priority
+TC_001,user1,pass1,TC_001,High
+TC_002,user2,pass2,TC_002,Medium`;
     const blob = new Blob([csvContent], { type: 'text/csv' });
     return new File([blob], "test_data.csv", { type: "text/csv" });
 };
@@ -66,6 +66,9 @@ export function ProjectUpload({ onProjectFileChange }: ProjectUploadProps) {
         if (typeof window !== 'undefined' && event.target?.result) {
             sessionStorage.setItem('uploadedDataFile', event.target.result as string);
             sessionStorage.setItem('uploadedDataFileName', foundFile.name);
+            // Clear any old edited data
+            sessionStorage.removeItem('editedDataHeaders');
+            sessionStorage.removeItem('editedDataRows');
             // This event tells other components that the data file has changed
             window.dispatchEvent(new Event('storage'));
         }
@@ -94,6 +97,8 @@ export function ProjectUpload({ onProjectFileChange }: ProjectUploadProps) {
         if (typeof window !== 'undefined') {
           sessionStorage.removeItem('uploadedDataFile');
           sessionStorage.removeItem('uploadedDataFileName');
+          sessionStorage.removeItem('editedDataHeaders');
+          sessionStorage.removeItem('editedDataRows');
           window.dispatchEvent(new Event('storage'));
         }
       }
@@ -133,6 +138,9 @@ export function ProjectUpload({ onProjectFileChange }: ProjectUploadProps) {
           if (typeof window !== 'undefined' && event.target?.result) {
             sessionStorage.setItem('uploadedDataFile', event.target.result as string);
             sessionStorage.setItem('uploadedDataFileName', file.name);
+            // Clear any old edited data when a new file is uploaded
+            sessionStorage.removeItem('editedDataHeaders');
+            sessionStorage.removeItem('editedDataRows');
             window.dispatchEvent(new Event('storage'));
           }
         };
@@ -142,6 +150,8 @@ export function ProjectUpload({ onProjectFileChange }: ProjectUploadProps) {
          if (typeof window !== 'undefined') {
           sessionStorage.removeItem('uploadedDataFile');
           sessionStorage.removeItem('uploadedDataFileName');
+          sessionStorage.removeItem('editedDataHeaders');
+          sessionStorage.removeItem('editedDataRows');
           window.dispatchEvent(new Event('storage'));
         }
       }
@@ -349,3 +359,5 @@ const Separator = React.forwardRef<
     <div ref={ref} className={cn("shrink-0 bg-border h-[1px] w-full", className)} {...props} />
 ));
 Separator.displayName = 'Separator';
+
+    

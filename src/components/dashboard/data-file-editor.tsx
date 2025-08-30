@@ -36,6 +36,38 @@ type ValidationError = {
     message: string;
 };
 
+const SESSION_HEADERS_KEY = 'editedDataHeaders';
+const SESSION_DATA_KEY = 'editedDataRows';
+
+// Helper to save current state to session storage
+const saveDataToSession = (headers: string[], data: TableData) => {
+    try {
+        sessionStorage.setItem(SESSION_HEADERS_KEY, JSON.stringify(headers));
+        sessionStorage.setItem(SESSION_DATA_KEY, JSON.stringify(data));
+    } catch (e) {
+        console.error("Failed to save data to session storage", e);
+    }
+};
+
+// Helper to load state from session storage
+const loadDataFromSession = (): { headers: string[], data: TableData } | null => {
+    try {
+        const storedHeaders = sessionStorage.getItem(SESSION_HEADERS_KEY);
+        const storedData = sessionStorage.getItem(SESSION_DATA_KEY);
+        if (storedHeaders && storedData) {
+            return {
+                headers: JSON.parse(storedHeaders),
+                data: JSON.parse(storedData),
+            };
+        }
+        return null;
+    } catch (e) {
+        console.error("Failed to load data from session storage", e);
+        return null;
+    }
+};
+
+
 export function DataFileEditor() {
   const [data, setData] = useState<TableData>([]);
   const [headers, setHeaders] = useState<string[]>([]);
@@ -75,8 +107,30 @@ export function DataFileEditor() {
     setValidationErrors(newErrors);
   }, []);
 
+  const updateStateAndSession = (newHeaders: string[], newData: TableData) => {
+    setHeaders(newHeaders);
+    setData(newData);
+    validateData(newHeaders, newData);
+    saveDataToSession(newHeaders, newData);
+  }
+
   useEffect(() => {
     try {
+      // First, try to load from our edited session data
+      const sessionData = loadDataFromSession();
+      if (sessionData) {
+          setFileName(sessionStorage.getItem('uploadedDataFileName') || '');
+          const fileExtension = sessionStorage.getItem('uploadedDataFileName')?.split('.').pop();
+          if (fileExtension === 'csv') setFileType('csv');
+          if (fileExtension === 'xlsx') setFileType('xlsx');
+          
+          setHeaders(sessionData.headers);
+          setData(sessionData.data);
+          validateData(sessionData.headers, sessionData.data);
+          return;
+      }
+      
+      // If not, fall back to loading the original file
       const fileDataUrl = sessionStorage.getItem('uploadedDataFile');
       const storedFileName = sessionStorage.getItem('uploadedDataFileName');
   
@@ -92,9 +146,7 @@ export function DataFileEditor() {
           .then(res => res.blob())
           .then(blob => {
               const processData = (parsedHeaders: string[], parsedData: TableData) => {
-                setHeaders(parsedHeaders);
-                setData(parsedData);
-                validateData(parsedHeaders, parsedData);
+                updateStateAndSession(parsedHeaders, parsedData);
               }
               if (isCsv) {
                   const reader = new FileReader();
@@ -142,8 +194,7 @@ export function DataFileEditor() {
     const newData = [...data];
     if (!newData[rowIndex]) newData[rowIndex] = [];
     newData[rowIndex][colIndex] = value;
-    setData(newData);
-    validateData(headers, newData);
+    updateStateAndSession(headers, newData);
   };
   
   const handleDownload = () => {
@@ -181,33 +232,27 @@ export function DataFileEditor() {
 
   const addRow = () => {
     const newData = [...data, Array(headers.length).fill('')];
-    setData(newData);
-    validateData(headers, newData);
+    updateStateAndSession(headers, newData);
   };
 
   const removeRow = (rowIndex: number) => {
     const newData = data.filter((_, index) => index !== rowIndex)
-    setData(newData);
-    validateData(headers, newData);
+    updateStateAndSession(headers, newData);
   };
   
   const addColumn = () => {
     const newColumnName = prompt("Enter new column header:", `Column ${headers.length + 1}`);
     if (newColumnName) {
         const newHeaders = [...headers, newColumnName];
-        setHeaders(newHeaders);
         const newData = data.map(row => [...row, '']);
-        setData(newData);
-        validateData(newHeaders, newData);
+        updateStateAndSession(newHeaders, newData);
     }
   };
 
   const removeColumn = (colIndex: number) => {
     const newHeaders = headers.filter((_, index) => index !== colIndex);
-    setHeaders(newHeaders);
     const newData = data.map(row => row.filter((_, index) => index !== colIndex));
-    setData(newData);
-    validateData(newHeaders, newData);
+    updateStateAndSession(newHeaders, newData);
   };
 
   const handleCleanup = () => {
@@ -237,9 +282,7 @@ export function DataFileEditor() {
     const colsRemoved = originalColCount - newHeaders.length;
 
     if (rowsRemoved > 0 || colsRemoved > 0) {
-      setHeaders(newHeaders);
-      setData(newData);
-      validateData(newHeaders, newData);
+      updateStateAndSession(newHeaders, newData);
       toast({
         title: 'Cleanup Complete',
         description: `Removed ${rowsRemoved} empty row(s) and ${colsRemoved} empty column(s).`,
@@ -392,3 +435,5 @@ export function DataFileEditor() {
     </div>
   );
 }
+
+    
