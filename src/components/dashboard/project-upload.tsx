@@ -323,7 +323,7 @@ export function ProjectUpload({ onProjectFileChange, projectFile }: ProjectUploa
               id="data-file"
               type="file"
               className="hidden"
-              accept=".xlsx,.csv"
+              accept=".xlsx,.csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/csv"
               onChange={(e) => handleFileChange(e, 'data')}
               />
               {dataFile && <span className="text-sm text-muted-foreground truncate">{dataFile.name}</span>}
