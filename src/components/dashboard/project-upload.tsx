@@ -1,6 +1,7 @@
 
 "use client";
 
+import * as React from 'react';
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import {
@@ -224,7 +225,7 @@ export function ProjectUpload({ onProjectFileChange }: ProjectUploadProps) {
                             id="git-url" 
                             placeholder="https://github.com/your/repository.git"
                             value={gitUrl}
-                            onChange={(e) => setGitUrl(e.targe.value)}
+                            onChange={(e) => setGitUrl(e.target.value)}
                             disabled={isCloning}
                         />
                     </div>
@@ -281,8 +282,8 @@ export function ProjectUpload({ onProjectFileChange }: ProjectUploadProps) {
 }
 
 const Separator = React.forwardRef<
-  React.ElementRef<any>,
-  React.ComponentPropsWithoutRef<any>
+  React.ElementRef<'div'>,
+  React.HTMLAttributes<HTMLDivElement>
 >(({ className, ...props }, ref) => (
     <div ref={ref} className={cn("shrink-0 bg-border h-[1px] w-full", className)} {...props} />
 ));
