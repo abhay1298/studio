@@ -24,6 +24,9 @@ import { Button } from '@/components/ui/button';
 import { ArrowUpRight, Ban } from 'lucide-react';
 import Link from 'next/link';
 import { Skeleton } from '../ui/skeleton';
+import JSZip from 'jszip';
+import { ProjectExplorer, TestSuite } from './project-explorer';
+
 
 type RecentRun = {
   suite: string;
@@ -36,17 +39,72 @@ export default function DashboardPageContent() {
   const [projectFile, setProjectFile] = useState<File | null>(null);
   const [recentRuns, setRecentRuns] = useState<RecentRun[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [testSuites, setTestSuites] = useState<TestSuite[]>([]);
+  const [isParsing, setIsParsing] = useState(false);
   const [stats, setStats] = useState({
     totalRuns: 0,
     passRate: 'N/A',
     avgDuration: '--',
   });
 
+  const parseRobotFile = (content: string): string[] => {
+    const testCases: string[] = [];
+    const lines = content.split(/\r?\n/);
+    let inTestCasesSection = false;
+    for (const line of lines) {
+        if (line.trim().startsWith('*** Test Cases ***')) {
+            inTestCasesSection = true;
+            continue;
+        }
+        if (line.trim().startsWith('***')) {
+            inTestCasesSection = false;
+        }
+        if (inTestCasesSection && line.trim() && !line.startsWith(' ') && !line.startsWith('\t') && !line.startsWith('#')) {
+            testCases.push(line.trim());
+        }
+    }
+    return testCases;
+  };
+  
+  const handleProjectFileChange = async (file: File | null) => {
+    setProjectFile(file);
+    if (!file) {
+        setTestSuites([]);
+        return;
+    }
+
+    setIsParsing(true);
+    try {
+        const zip = await JSZip.loadAsync(file);
+        const suites: TestSuite[] = [];
+        const robotFilePromises = Object.keys(zip.files)
+            .filter(filename => filename.endsWith('.robot'))
+            .map(async (filename) => {
+                const fileContent = await zip.files[filename].async('string');
+                const testCases = parseRobotFile(fileContent);
+                if (testCases.length > 0) {
+                    suites.push({ name: filename, testCases });
+                }
+            });
+        
+        await Promise.all(robotFilePromises);
+        setTestSuites(suites.sort((a,b) => a.name.localeCompare(b.name)));
+
+    } catch (error) {
+        console.error("Failed to parse zip file:", error);
+    } finally {
+        setIsParsing(false);
+    }
+  };
+
+
   useEffect(() => {
     // Restore project file state from sessionStorage
     const storedProjectFileName = sessionStorage.getItem('uploadedProjectFileName');
     if (storedProjectFileName) {
-      setProjectFile(new File([], storedProjectFileName, { type: 'application/zip' }));
+      // Create a dummy file to represent the state, actual parsing will be triggered by re-upload
+      const dummyFile = new File([], storedProjectFileName, { type: 'application/zip' });
+      setProjectFile(dummyFile);
     }
   }, []);
 
@@ -228,9 +286,10 @@ export default function DashboardPageContent() {
           </CardContent>
         </Card>
       </div>
-      <div className="grid auto-rows-max items-start gap-4 md:gap-8">
-        <ProjectUpload onProjectFileChange={setProjectFile} />
+      <div className="grid auto-rows-max items-start gap-4 md:gap-8 xl:col-span-1">
+        <ProjectUpload onProjectFileChange={handleProjectFileChange} projectFile={projectFile} />
         <DependencyChecker projectFile={projectFile} />
+        <ProjectExplorer suites={testSuites} isLoading={isParsing} />
       </div>
     </div>
   );
