@@ -142,7 +142,7 @@ def run_robot_in_thread(command, output_dir, timestamp):
             state.logs.append(clean_line)
 
             # --- Accurate Pass/Fail Counting ---
-            # A test case line doesn't start with '---' or '==='
+            # A test case result line does not start with '---' or '==='
             if not clean_line.startswith(('---', '===')):
                 if clean_line.endswith('| PASS |'):
                     state.pass_count += 1
@@ -152,9 +152,10 @@ def run_robot_in_thread(command, output_dir, timestamp):
         state.process.stdout.close()
         state.return_code = state.process.wait()
 
-        if state.status != "running":
+        # Exit early if the process was stopped to prevent incorrect status reporting
+        if state.status == "stopped":
             state.logs.append(f"\nExecution was manually stopped.")
-            return # Exit early if the process was stopped
+            return
 
         # --- Post Execution Processing ---
         try:
@@ -164,19 +165,22 @@ def run_robot_in_thread(command, output_dir, timestamp):
                         temp_file_path = os.path.join(dirpath, f)
 
                         if f.lower() == 'report.html' and not state.report_file:
-                            state.report_file = f"report-{timestamp}.html"
-                            shutil.move(temp_file_path, os.path.join(REPORTS_DIR, state.report_file))
+                            archived_name = f"report-{timestamp}.html"
+                            shutil.move(temp_file_path, os.path.join(REPORTS_DIR, archived_name))
+                            state.report_file = archived_name # Set state AFTER move
                             state.logs.append(f"\nSuccessfully archived report to {state.report_file}")
 
                         elif f.lower() == 'log.html' and not state.log_file:
-                            state.log_file = f"log-{timestamp}.html"
-                            shutil.move(temp_file_path, os.path.join(REPORTS_DIR, state.log_file))
+                            archived_name = f"log-{timestamp}.html"
+                            shutil.move(temp_file_path, os.path.join(REPORTS_DIR, archived_name))
+                            state.log_file = archived_name # Set state AFTER move
                             state.logs.append(f"Successfully archived log to {state.log_file}")
 
                         elif f.lower().endswith(('.mp4', '.webm', '.avi')) and not state.video_file:
                             video_ext = os.path.splitext(f)[1]
-                            state.video_file = f"video-{timestamp}{video_ext}"
-                            shutil.move(temp_file_path, os.path.join(REPORTS_DIR, state.video_file))
+                            archived_name = f"video-{timestamp}{video_ext}"
+                            shutil.move(temp_file_path, os.path.join(REPORTS_DIR, archived_name))
+                            state.video_file = archived_name # Set state AFTER move
                             state.logs.append(f"Successfully archived video to {state.video_file}")
 
         except Exception as e:
@@ -298,13 +302,13 @@ def stop_robot_tests():
                  # Sends SIGTERM to the entire process group on Unix-like systems
                  os.killpg(os.getpgid(state.process.pid), signal.SIGTERM)
 
-            # Don't wait here, let the thread handle the process cleanup
+            # Let the execution thread handle the final cleanup and status update
             state.logs.append("--- Stop signal sent to process ---")
             return jsonify({"status": "success", "message": "Stop signal sent."}), 200
         except Exception as e:
             print(f"Error stopping process: {e}")
             state.logs.append(f"--- Error stopping process: {e} ---")
-            state.status = "failed"
+            # Don't change status to failed, as the process might be dead already
             return jsonify({"status": "error", "message": f"Failed to stop process: {e}"}), 500
     else:
         return jsonify({"status": "info", "message": "No execution running to stop."}), 200
@@ -343,3 +347,5 @@ def delete_report(filename):
 
 if __name__ == '__main__':
     app.run(host='127.0.0.1', port=5001, debug=True)
+
+    
