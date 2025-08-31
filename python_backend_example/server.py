@@ -111,8 +111,28 @@ def list_suites():
     except Exception as e:
         return jsonify({"error": f"Failed to scan for suites: {str(e)}"}), 500
 
+def find_video_in_dir(directory):
+    """Finds the most recently modified video file in a directory."""
+    video_extensions = ('.mp4', '.webm', '.avi', '.mov')
+    latest_video = None
+    latest_time = 0
 
-def run_robot_in_thread(command, output_dir, timestamp):
+    if not os.path.isdir(directory):
+        state.logs.append(f"Video search directory '{directory}' not found.")
+        return None
+
+    for root, _, files in os.walk(directory):
+        for file in files:
+            if file.lower().endswith(video_extensions):
+                file_path = os.path.join(root, file)
+                mod_time = os.path.getmtime(file_path)
+                if mod_time > latest_time:
+                    latest_time = mod_time
+                    latest_video = file_path
+    return latest_video
+
+
+def run_robot_in_thread(command, output_dir, timestamp, project_dir):
     """The target function for the execution thread that runs the robot command."""
     global state
     output_dir = os.path.abspath(output_dir) # Ensure path is absolute
@@ -159,32 +179,37 @@ def run_robot_in_thread(command, output_dir, timestamp):
 
         # --- Post Execution Processing ---
         try:
+            # 1. Archive Robot Framework artifacts (report.html, log.html)
             if os.path.exists(output_dir):
-                for dirpath, _, filenames in os.walk(output_dir):
-                    for f in filenames:
-                        temp_file_path = os.path.join(dirpath, f)
+                for f in os.listdir(output_dir):
+                    temp_file_path = os.path.join(output_dir, f)
+                    if f.lower() == 'report.html':
+                        archived_name = f"report-{timestamp}.html"
+                        shutil.move(temp_file_path, os.path.join(REPORTS_DIR, archived_name))
+                        state.report_file = archived_name
+                        state.logs.append(f"\nSuccessfully archived report to {state.report_file}")
+                    elif f.lower() == 'log.html':
+                        archived_name = f"log-{timestamp}.html"
+                        shutil.move(temp_file_path, os.path.join(REPORTS_DIR, archived_name))
+                        state.log_file = archived_name
+                        state.logs.append(f"Successfully archived log to {state.log_file}")
 
-                        if f.lower() == 'report.html' and not state.report_file:
-                            archived_name = f"report-{timestamp}.html"
-                            shutil.move(temp_file_path, os.path.join(REPORTS_DIR, archived_name))
-                            state.report_file = archived_name # Set state AFTER move
-                            state.logs.append(f"\nSuccessfully archived report to {state.report_file}")
+            # 2. Find and archive the new video file from the specific directory
+            video_search_dir = os.path.join(project_dir, 'Execution_Videos')
+            state.logs.append(f"Searching for video in: {video_search_dir}")
+            new_video_path = find_video_in_dir(video_search_dir)
 
-                        elif f.lower() == 'log.html' and not state.log_file:
-                            archived_name = f"log-{timestamp}.html"
-                            shutil.move(temp_file_path, os.path.join(REPORTS_DIR, archived_name))
-                            state.log_file = archived_name # Set state AFTER move
-                            state.logs.append(f"Successfully archived log to {state.log_file}")
-
-                        elif f.lower().endswith(('.mp4', '.webm', '.avi')) and not state.video_file:
-                            video_ext = os.path.splitext(f)[1]
-                            archived_name = f"video-{timestamp}{video_ext}"
-                            shutil.move(temp_file_path, os.path.join(REPORTS_DIR, archived_name))
-                            state.video_file = archived_name # Set state AFTER move
-                            state.logs.append(f"Successfully archived video to {state.video_file}")
+            if new_video_path:
+                video_ext = os.path.splitext(new_video_path)[1]
+                archived_video_name = f"video-{timestamp}{video_ext}"
+                shutil.move(new_video_path, os.path.join(REPORTS_DIR, archived_video_name))
+                state.video_file = archived_video_name
+                state.logs.append(f"Successfully archived video '{os.path.basename(new_video_path)}' to {state.video_file}")
+            else:
+                state.logs.append("No video file found in 'Execution_Videos' directory.")
 
         except Exception as e:
-            state.logs.append(f"\nError during report archiving: {e}")
+            state.logs.append(f"\nError during report/video archiving: {e}")
 
         state.status = 'success' if state.return_code == 0 else 'failed'
         state.logs.append(f"\nExecution Result: {state.status.upper()} (Exit Code {state.return_code})")
@@ -231,7 +256,7 @@ def run_robot_tests():
         config = data.get('config', {})
 
         # This will be the final path passed to the robot command
-        tests_directory_to_run = TESTS_DIRECTORY
+        tests_to_run_path = TESTS_DIRECTORY
 
         # --- Command Construction (Real) ---
         command = ['robot']
@@ -250,21 +275,21 @@ def run_robot_tests():
             # When running by suite, we need to construct the full path to the suite file
             suite_path = os.path.join(TESTS_DIRECTORY, config['suite'].replace('/', os.sep))
             if os.path.isfile(suite_path):
-                tests_directory_to_run = suite_path # We run this specific file
+                tests_to_run_path = suite_path # We run this specific file
             else:
                  return jsonify({"status": "error", "message": f"Suite file not found: {suite_path}"}), 404
         elif runType == 'By Test Case' and config.get('testcase'):
             command.extend(['-t', config['testcase']])
 
         # The last argument to the command is the path to the tests to run
-        command.append(tests_directory_to_run)
+        command.append(tests_to_run_path)
 
         state.logs.append("==============================================================================")
         state.logs.append(f"Executing command: {' '.join(command)}")
         state.logs.append("==============================================================================")
 
         # --- Start non-blocking execution in a separate thread ---
-        thread = Thread(target=run_robot_in_thread, args=(command, output_dir, timestamp))
+        thread = Thread(target=run_robot_in_thread, args=(command, output_dir, timestamp, TESTS_DIRECTORY))
         thread.daemon = True
         thread.start()
 
@@ -354,3 +379,8 @@ if __name__ == '__main__':
     app.run(host='127.0.0.1', port=5001, debug=True)
 
     
+
+    
+
+    
+
