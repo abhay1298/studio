@@ -25,6 +25,7 @@ import {
   Trash2,
   StopCircle,
   Rocket,
+  Sparkles,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { Alert, AlertDescription, AlertTitle } from "../ui/alert";
@@ -178,7 +179,9 @@ export function ExecutionPanel() {
               </span>
             </div>
             <div className="flex gap-2">
-                {status === 'failed' && <AiAnalysisDialog logs={lastFailedLogs} />}
+                {status === 'failed' && (
+                  <AiAnalysisDialog logs={lastFailedLogs} />
+                )}
                 
                 {isRunning && (
                     <Button variant="destructive" onClick={handleStop} disabled={!isRunning}>
@@ -202,3 +205,5 @@ export function ExecutionPanel() {
     </Card>
   );
 }
+
+    
