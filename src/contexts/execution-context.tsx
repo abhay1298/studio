@@ -7,7 +7,6 @@ import { CheckCircle2, FileCheck2, XCircle } from 'lucide-react';
 import Papa from 'papaparse';
 import * as XLSX from 'xlsx';
 import type { TestSuite } from '@/components/dashboard/project-explorer';
-import JSZip from 'jszip';
 import type { DependencyStatus } from '@/components/dashboard/dependency-checker';
 
 
@@ -47,7 +46,7 @@ interface ExecutionContextType {
   handleRun: (runType: string) => Promise<void>;
   handleStop: () => Promise<void>;
   clearLogs: () => void;
-  handleProjectFileUpload: (file: File | null) => void;
+  handleProjectFileUpload: (files: FileList | null) => void;
   handleDataFileUpload: (file: File | null) => void;
   clearProjectFile: () => void;
   clearDataFile: () => void;
@@ -420,65 +419,65 @@ export function ExecutionProvider({ children }: { children: ReactNode }) {
     }
   }, [clearDataFile, parseAndSetDataFile, toast]);
 
-  const handleProjectFileUpload = useCallback(async (file: File | null) => {
-    if (!file) {
+  const handleProjectFileUpload = useCallback(async (files: FileList | null) => {
+    if (!files || files.length === 0) {
       clearProjectFile();
       return;
     }
-  
-    setProjectFileName(file.name);
-  
-    try {
-      const buffer = await readFileAsArrayBuffer(file);
-      const zip = await JSZip.loadAsync(buffer);
-      
-      let reqFileEntry: JSZip.JSZipObject | null = null;
-      
-      zip.forEach((relativePath, zipEntry) => {
-        // Find a file named 'requirements.txt' in any directory, case-insensitive
-        if (!zipEntry.dir && relativePath.toLowerCase().endsWith('requirements.txt')) {
-            reqFileEntry = zipEntry;
+
+    const fileList = Array.from(files);
+    const rootDir = fileList[0].webkitRelativePath.split('/')[0];
+    setProjectFileName(rootDir);
+
+    let foundReqs = false;
+    let foundData = false;
+
+    // Prioritize requirements.txt
+    const reqFile = fileList.find(file => file.name.toLowerCase() === 'requirements.txt');
+    if (reqFile) {
+        try {
+            const content = await reqFile.text();
+            setRequirementsContent(content);
+            foundReqs = true;
+        } catch (e) {
+            console.error("Error reading requirements.txt", e);
         }
-      });
-
-
-      if (reqFileEntry) {
-          const content = await reqFileEntry.async('string');
-          setRequirementsContent(content);
-      } else {
+    }
+    
+    if (!foundReqs) {
         setRequirementsContent(null);
         toast({
             title: 'Info',
             description: `requirements.txt not found in the project.`,
         });
-      }
-      
-      const dataFileKey = Object.keys(zip.files).find(
-        (relativePath) => (relativePath.toLowerCase().endsWith('.csv') || relativePath.toLowerCase().endsWith('.xlsx')) && !zip.files[relativePath].dir
-      );
-      if (dataFileKey) {
-        const dataFile = zip.files[dataFileKey];
-        const dataBuffer = await dataFile.async('arraybuffer');
-        setDataFileName(dataFile.name);
-        await parseAndSetDataFile(dataBuffer, dataFile.name);
-      }
-
-      toast({
-        title: 'Project Loaded',
-        description: `${file.name} inspected successfully.`,
-        action: <FileCheck2 className="text-green-500" />,
-      });
-  
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
-      console.error("Error reading zip file:", errorMessage);
-      toast({
-        variant: 'destructive',
-        title: 'Error processing project',
-        description: `Could not process the project file. It may be corrupted or not a valid zip.`,
-      });
     }
-  }, [clearProjectFile, parseAndSetDataFile, toast]);
+
+    // Then look for data files, but don't overwrite if one is already loaded manually
+    if (!dataFileName) {
+        const dataFile = fileList.find(file => {
+            const lowerCaseName = file.name.toLowerCase();
+            return lowerCaseName.endsWith('.csv') || lowerCaseName.endsWith('.xlsx');
+        });
+
+        if (dataFile) {
+            try {
+                const buffer = await readFileAsArrayBuffer(dataFile);
+                await parseAndSetDataFile(buffer, dataFile.name);
+                setDataFileName(dataFile.name);
+                foundData = true;
+            } catch (e) {
+                console.error("Error reading data file from project", e);
+            }
+        }
+    }
+
+    toast({
+        title: 'Project Loaded',
+        description: `${rootDir} loaded successfully. ${foundReqs ? 'Found requirements.txt. ' : ''}${foundData ? 'Found data file.' : ''}`,
+        action: <FileCheck2 className="text-green-500" />,
+    });
+  
+  }, [clearProjectFile, parseAndSetDataFile, toast, dataFileName]);
 
   const checkDependencies = useCallback(async () => {
     if (!requirementsContent) {

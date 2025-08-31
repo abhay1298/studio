@@ -3,7 +3,6 @@
 "use client";
 
 import * as React from 'react';
-import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   Card,
@@ -17,9 +16,8 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Button, buttonVariants } from '@/components/ui/button';
 import { useToast } from '@/hooks/use-toast';
-import { UploadCloud, FileCheck2, FileX2, Pencil, GitBranch, Loader2, FolderArchive, FileSpreadsheet } from 'lucide-react';
+import { UploadCloud, Pencil, FolderUp, FolderArchive, FileSpreadsheet } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '../ui/tabs';
 import { useExecutionContext } from '@/contexts/execution-context';
 import { Skeleton } from '../ui/skeleton';
 
@@ -27,7 +25,7 @@ import { Skeleton } from '../ui/skeleton';
 type ProjectUploadProps = {
     projectFileName: string | null;
     dataFileName: string | null;
-    onProjectFileChange: (file: File | null) => void;
+    onProjectFileChange: (files: FileList | null) => void;
     onDataFileChange: (file: File | null) => void;
     onClearProjectFile: () => void;
     onClearDataFile: () => void;
@@ -41,34 +39,23 @@ export function ProjectUpload({
     onClearProjectFile,
     onClearDataFile
 }: ProjectUploadProps) {
-  const { toast } = useToast();
   const router = useRouter();
   const { hasHydrated } = useExecutionContext();
-  const [gitUrl, setGitUrl] = useState('');
-  const [isCloning, setIsCloning] = useState(false);
 
   const handleFileChange = async (
     e: React.ChangeEvent<HTMLInputElement>,
     fileType: 'project' | 'data'
   ) => {
-    const file = e.target.files?.[0] || null;
     
     if (fileType === 'project') {
-        const allowedProjectTypes = ['application/zip', 'application/x-zip-compressed'];
-        if (file && (allowedProjectTypes.includes(file.type) || file.name.endsWith('.zip'))) {
-            onProjectFileChange(file);
+        const files = e.target.files;
+        if (files && files.length > 0) {
+            onProjectFileChange(files);
         } else {
             onProjectFileChange(null);
-            if (file) { // if a file was selected but it's the wrong type
-                toast({
-                  variant: 'destructive',
-                  title: 'Error: Invalid File Format',
-                  description: `Please upload a valid project file (.zip).`,
-                  action: <FileX2 className="text-red-500" />,
-                });
-            }
         }
     } else if (fileType === 'data') {
+        const file = e.target.files?.[0] || null;
         const allowedDataTypes = [
             'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
             'text/csv',
@@ -77,17 +64,9 @@ export function ProjectUpload({
             onDataFileChange(file);
         } else {
             onDataFileChange(null);
-             if (file) {
-                toast({
-                  variant: 'destructive',
-                  title: 'Error: Invalid File Format',
-                  description: `Please upload a valid data file (.xlsx, .csv).`,
-                  action: <FileX2 className="text-red-500" />,
-                });
-            }
         }
     }
-     // Reset the input value so the same file can be re-uploaded
+     // Reset the input value so the same folder/file can be re-uploaded
     if (e.target) {
       e.target.value = "";
     }
@@ -95,31 +74,6 @@ export function ProjectUpload({
   
   const handleEditClick = () => {
     router.push('/dashboard/data-editor');
-  };
-
-  const handleGitImport = () => {
-    if (!gitUrl.trim() || !gitUrl.includes('.git')) {
-        toast({
-            variant: 'destructive',
-            title: 'Invalid Git URL',
-            description: 'Please enter a valid Git repository URL.',
-        });
-        return;
-    }
-    setIsCloning(true);
-    // This is a simulation
-    setTimeout(() => {
-        setIsCloning(false);
-        const repoName = gitUrl.split('/').pop()?.replace('.git', '') || 'repository';
-        const dummyFile = new File([], `${repoName}.zip`, { type: 'application/zip'});
-        onProjectFileChange(dummyFile);
-        
-        toast({
-            title: 'Repository Imported',
-            description: `Successfully imported project from '${repoName}'.`,
-            action: <GitBranch className="text-green-500" />,
-        });
-    }, 2000);
   };
   
   const renderLoadingSkeleton = () => (
@@ -137,66 +91,36 @@ export function ProjectUpload({
       <CardHeader>
         <CardTitle className="font-headline">Load Project</CardTitle>
         <CardDescription>
-          Upload your project zip or import from Git to get started.
+          Select your local Robot Framework project folder to get started.
         </CardDescription>
       </CardHeader>
       
       {!hasHydrated ? (
         renderLoadingSkeleton()
       ) : !projectFileName ? (
-        <Tabs defaultValue="upload" className="w-full">
-            <TabsList className="grid w-full grid-cols-2 mx-6" style={{width: 'calc(100% - 3rem)'}}>
-                <TabsTrigger value="git" disabled={isCloning}>
-                    <GitBranch className="mr-2 h-4 w-4" />
-                    Import from Git
-                </TabsTrigger>
-                <TabsTrigger value="upload" disabled={isCloning}>
-                    <UploadCloud className="mr-2 h-4 w-4" />
-                    File Upload
-                </TabsTrigger>
-            </TabsList>
-             <TabsContent value="git">
-                <CardContent className="space-y-4 pt-6">
-                    <div className="grid gap-2">
-                        <Label htmlFor="git-url">Git Repository URL</Label>
-                        <Input 
-                            id="git-url" 
-                            placeholder="https://github.com/your/repository.git"
-                            value={gitUrl}
-                            onChange={(e) => setGitUrl(e.target.value)}
-                            disabled={isCloning}
-                        />
-                    </div>
-                    <Button onClick={handleGitImport} disabled={isCloning || !gitUrl.trim()} className="w-full">
-                        {isCloning ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <GitBranch className="mr-2 h-4 w-4" />}
-                        {isCloning ? 'Importing...' : 'Import Project'}
-                    </Button>
-                </CardContent>
-            </TabsContent>
-            <TabsContent value="upload">
-                <CardContent className="grid gap-6 pt-6">
-                    <div className="grid gap-2">
-                    <Label htmlFor="project-file">Robot Framework Project (.zip)</Label>
-                    <div className="flex items-center gap-2">
-                        <Label htmlFor="project-file" className={cn(
-                        "flex items-center gap-2 cursor-pointer",
-                        buttonVariants({ variant: 'outline' })
-                        )}>
-                        <UploadCloud />
-                        <span className="font-bold">Choose file</span>
-                        </Label>
-                        <Input
-                        id="project-file"
-                        type="file"
-                        className="hidden"
-                        accept=".zip,.zip-compressed"
-                        onChange={(e) => handleFileChange(e, 'project')}
-                        />
-                    </div>
-                    </div>
-                </CardContent>
-            </TabsContent>
-        </Tabs>
+        <CardContent className="grid gap-6 pt-6">
+            <div className="grid gap-2">
+            <Label htmlFor="project-folder">Robot Framework Project Folder</Label>
+            <div className="flex items-center gap-2">
+                <Label htmlFor="project-folder" className={cn(
+                "flex items-center gap-2 cursor-pointer",
+                buttonVariants({ variant: 'outline' })
+                )}>
+                <FolderUp className="h-5 w-5" />
+                <span className="font-bold">Choose Folder</span>
+                </Label>
+                <Input
+                    id="project-folder"
+                    type="file"
+                    className="hidden"
+                    onChange={(e) => handleFileChange(e, 'project')}
+                    // @ts-ignore
+                    webkitdirectory="true"
+                    directory="true"
+                />
+            </div>
+            </div>
+        </CardContent>
       ) : (
         <CardContent className="pt-6">
              <div className="bg-muted/50 rounded-lg p-4">
@@ -220,7 +144,7 @@ export function ProjectUpload({
        <CardHeader>
          <CardTitle className="font-headline">Orchestrator Data</CardTitle>
          <CardDescription>
-          Upload and manage the Excel or CSV file for orchestrator runs.
+          Upload and manage the Excel or CSV file for orchestrator runs. This can also be detected from your project folder.
         </CardDescription>
       </CardHeader>
       <CardContent className="pt-6">
