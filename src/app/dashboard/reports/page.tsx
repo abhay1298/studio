@@ -54,7 +54,7 @@ export default function ReportsPage() {
         if (history) {
           const runs = JSON.parse(history);
           const formattedReports: Report[] = runs.map((run: any, index: number) => ({
-            id: run.id || `RUN-${new Date(run.date).getTime()}-${index}`,
+            id: run.id || `RUN-${new Date(run.date).getTime()}-${index}`, // Ensure ID exists
             suite: run.suite,
             status: run.status,
             timestamp: new Date(run.date).toLocaleString(),
@@ -125,6 +125,7 @@ export default function ReportsPage() {
         const history = localStorage.getItem('robotMaestroRuns');
         if (history) {
             const runs = JSON.parse(history);
+            // Match on ID, falling back to a unique composite key for older records without an ID
             const updatedRuns = runs.filter((run: any) => (run.id || `RUN-${new Date(run.date).getTime()}`) !== runId);
             localStorage.setItem('robotMaestroRuns', JSON.stringify(updatedRuns));
         }

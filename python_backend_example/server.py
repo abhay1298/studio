@@ -177,32 +177,28 @@ def run_robot_tests():
         log_file = None
         video_file = None
 
-        # Archive reports and video
+        # Archive reports and video by searching recursively
         try:
-            # Archive HTML reports
-            temp_report_path = os.path.join(output_dir, 'report.html')
-            temp_log_path = os.path.join(output_dir, 'log.html')
-
-            if os.path.exists(temp_report_path):
-                report_file = f"report-{timestamp}.html"
-                shutil.move(temp_report_path, os.path.join(REPORTS_DIR, report_file))
-                logs.append(f"\nSuccessfully archived report to {report_file}")
-
-            if os.path.exists(temp_log_path):
-                log_file = f"log-{timestamp}.html"
-                shutil.move(temp_log_path, os.path.join(REPORTS_DIR, log_file))
-                logs.append(f"Successfully archived log to {log_file}")
-
-            # Archive video file
             if os.path.exists(output_dir):
-                for f in os.listdir(output_dir):
-                    if f.lower().endswith('.avi'):
-                        temp_video_path = os.path.join(output_dir, f)
-                        video_file = f"video-{timestamp}.avi"
-                        shutil.move(temp_video_path, os.path.join(REPORTS_DIR, video_file))
-                        logs.append(f"Successfully archived video to {video_file}")
-                        break # Assume only one video per run
+                for dirpath, _, filenames in os.walk(output_dir):
+                    for f in filenames:
+                        temp_file_path = os.path.join(dirpath, f)
+                        
+                        if f.lower() == 'report.html' and not report_file:
+                            report_file = f"report-{timestamp}.html"
+                            shutil.move(temp_file_path, os.path.join(REPORTS_DIR, report_file))
+                            logs.append(f"\nSuccessfully archived report to {report_file}")
+                        
+                        elif f.lower() == 'log.html' and not log_file:
+                            log_file = f"log-{timestamp}.html"
+                            shutil.move(temp_file_path, os.path.join(REPORTS_DIR, log_file))
+                            logs.append(f"Successfully archived log to {log_file}")
 
+                        elif f.lower().endswith('.avi') and not video_file:
+                            video_file = f"video-{timestamp}.avi"
+                            shutil.move(temp_file_path, os.path.join(REPORTS_DIR, video_file))
+                            logs.append(f"Successfully archived video to {video_file}")
+            
             # Clean up other output files if necessary
             if os.path.exists(output_dir):
                 shutil.rmtree(output_dir)
@@ -307,3 +303,4 @@ if __name__ == '__main__':
     
 
     
+
