@@ -19,7 +19,7 @@ import {
 } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Download, Eye, Ban, Trash2, Loader2, ServerCrash, RefreshCw, Clapperboard } from 'lucide-react';
+import { Download, Eye, Ban, Trash2, Loader2, ServerCrash, RefreshCw, Clapperboard, MessageSquareCode } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import Link from 'next/link';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -162,7 +162,7 @@ export default function ReportsPage() {
     return (
         <div className="space-y-6">
             <h1 className="font-headline text-3xl font-bold tracking-tight">
-                Reports & Logs
+                Reports & Artifacts
             </h1>
             <Alert variant="destructive">
                 <ServerCrash className="h-4 w-4" />
@@ -180,13 +180,13 @@ export default function ReportsPage() {
   return (
     <div className="space-y-6">
       <h1 className="font-headline text-3xl font-bold tracking-tight">
-        Reports & Logs
+        Reports & Artifacts
       </h1>
       <Card>
         <CardHeader>
           <CardTitle className="font-headline">Execution History</CardTitle>
           <CardDescription>
-            Browse, view, and download detailed HTML reports and video recordings for all past test executions.
+            Browse, view, and download detailed HTML reports, logs, and video recordings for all past test executions.
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -239,7 +239,13 @@ export default function ReportsPage() {
                     <TableCell className="text-center text-red-600 dark:text-red-500 font-medium">
                         {report.fail}
                     </TableCell>
-                    <TableCell className="text-right space-x-2">
+                    <TableCell className="text-right space-x-1">
+                        <Button asChild variant="outline" size="icon" title="View Logs">
+                           <Link href={`/dashboard/log-viewer/${report.id}`}>
+                            <MessageSquareCode className="h-4 w-4" />
+                            <span className="sr-only">View Logs</span>
+                           </Link>
+                        </Button>
                         <Button variant="outline" size="icon" onClick={() => handleViewFile(report.reportFile)} disabled={!report.reportFile} title="View Report">
                             <Eye className="h-4 w-4" />
                             <span className="sr-only">View Report</span>

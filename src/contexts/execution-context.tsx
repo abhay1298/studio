@@ -184,7 +184,7 @@ export function ExecutionProvider({ children }: { children: ReactNode }) {
                 // If JSON parsing fails, use the response text as the error
                 errorMessage = await response.text();
                 if (!errorMessage) {
-                    errorMessage = `Failed to fetch suites. Status: ${response.status}`;
+                    errorMessage = `Failed to fetch suites from the backend. Status: ${response.status}`;
                 }
             }
             throw new Error(errorMessage);
@@ -222,7 +222,8 @@ export function ExecutionProvider({ children }: { children: ReactNode }) {
     failCount: number,
     reportFile: string | null,
     logFile: string | null,
-    videoFile: string | null
+    videoFile: string | null,
+    rawLogs: string[]
   ) => {
       if (typeof window !== 'undefined') {
           const newRun = {
@@ -235,7 +236,8 @@ export function ExecutionProvider({ children }: { children: ReactNode }) {
               fail: failCount,
               reportFile,
               logFile,
-              videoFile
+              videoFile,
+              rawLogs, // Save raw logs for the viewer
           };
           const historyJSON = localStorage.getItem('robotMaestroRuns');
           let runs = [];
@@ -317,7 +319,8 @@ export function ExecutionProvider({ children }: { children: ReactNode }) {
               data.fail_count || 0,
               data.reportFile || null,
               data.logFile || null,
-              data.videoFile || null
+              data.videoFile || null,
+              data.logs || []
             );
   
             if (finalStatus === 'success') {
@@ -366,17 +369,17 @@ export function ExecutionProvider({ children }: { children: ReactNode }) {
       
       addLog(`Execution failed: ${toastDescription}`);
       setStatus("failed");
-      saveRunToHistory(suiteName, 'Failed', duration, 0, 1, null, null, null);
+      saveRunToHistory(suiteName, 'Failed', duration, 0, 1, null, null, null, logs);
       toast({
         variant: "destructive",
         title: toastTitle,
         description: toastDescription,
       });
     }
-  }, [addLog, getSuiteNameForRun, runConfig, saveRunToHistory, toast]);
+  }, [addLog, getSuiteNameForRun, runConfig, saveRunToHistory, toast, logs]);
 
   const handleStop = useCallback(async () => {
-    addLog('Attempting to stop execution...');
+    addLog('--- Stop signal sent to process ---');
     try {
         const response = await fetch('/api/stop-tests', { method: 'POST' });
         if (!response.ok) {
@@ -656,5 +659,3 @@ export function useExecutionContext() {
   }
   return context;
 }
-
-    
