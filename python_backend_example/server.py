@@ -142,8 +142,8 @@ def run_robot_in_thread(command, output_dir, timestamp):
             state.logs.append(clean_line)
 
             # --- Accurate Pass/Fail Counting ---
-            # A test case result line does not start with '---' or '==='
-            if not clean_line.startswith(('---', '===')):
+            # A test case result line does not start with '---' or '===' or keywords
+            if not clean_line.startswith(('---', '===', 'Suite Setup', 'Suite Teardown')):
                 if clean_line.endswith('| PASS |'):
                     state.pass_count += 1
                 elif clean_line.endswith('| FAIL |'):
@@ -352,7 +352,5 @@ def delete_report(filename):
 
 if __name__ == '__main__':
     app.run(host='127.0.0.1', port=5001, debug=True)
-
-    
 
     
