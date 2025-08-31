@@ -195,7 +195,7 @@ def run_robot_in_thread(command, output_dir, timestamp, project_dir):
                         state.logs.append(f"Successfully archived log to {state.log_file}")
 
             # 2. Find and archive the new video file from the specific directory
-            video_search_dir = os.path.join(project_dir, 'execution video')
+            video_search_dir = os.path.join(project_dir, 'Execution_Videos')
             state.logs.append(f"Searching for video in: {video_search_dir}")
             new_video_path = find_video_in_dir(video_search_dir)
 
@@ -206,7 +206,7 @@ def run_robot_in_thread(command, output_dir, timestamp, project_dir):
                 state.video_file = archived_video_name
                 state.logs.append(f"Successfully archived video '{os.path.basename(new_video_path)}' to {state.video_file}")
             else:
-                state.logs.append("No video file found in 'execution video' directory.")
+                state.logs.append("No video file found in 'Execution_Videos' directory.")
 
         except Exception as e:
             state.logs.append(f"\nError during report/video archiving: {e}")
@@ -383,3 +383,4 @@ if __name__ == '__main__':
     
 
     
+
