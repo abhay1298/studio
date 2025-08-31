@@ -41,6 +41,7 @@ interface ExecutionContextType {
   setEditedData: Dispatch<SetStateAction<TableData>>;
   editedHeaders: string[];
   setEditedHeaders: Dispatch<SetStateAction<string[]>>;
+  hasHydrated: boolean;
   fetchSuites: () => Promise<void>;
   handleInputChange: (field: keyof RunConfig, value: string) => void;
   handleRun: (runType: string) => Promise<void>;
@@ -95,11 +96,11 @@ export function ExecutionProvider({ children }: { children: ReactNode }) {
     testcase: '',
   });
 
-  const [projectFileName, setProjectFileName] = useState<string | null>(() => getInitialState('projectFileName', null));
-  const [dataFileName, setDataFileName] = useState<string | null>(() => getInitialState('dataFileName', null));
+  const [projectFileName, setProjectFileName] = useState<string | null>(null);
+  const [dataFileName, setDataFileName] = useState<string | null>(null);
   
-  const [requirementsContent, setRequirementsContent] = useState<string | null>(() => getInitialState('requirementsContent', null));
-  const [dependencyCheckResult, setDependencyCheckResult] = useState<DependencyStatus[] | null>(() => getInitialState('dependencyCheckResult', null));
+  const [requirementsContent, setRequirementsContent] = useState<string | null>(null);
+  const [dependencyCheckResult, setDependencyCheckResult] = useState<DependencyStatus[] | null>(null);
   const [isCheckingDependencies, setIsCheckingDependencies] = useState(false);
 
 
@@ -107,19 +108,32 @@ export function ExecutionProvider({ children }: { children: ReactNode }) {
   const [isLoadingSuites, setIsLoadingSuites] = useState(false);
   const [suiteLoadError, setSuiteLoadError] = useState<string | null>(null);
 
-  const [editedData, setEditedData] = useState<TableData>(() => getInitialState('editedData', []));
-  const [editedHeaders, setEditedHeaders] = useState<string[]>(() => getInitialState('editedHeaders', []));
+  const [editedData, setEditedData] = useState<TableData>([]);
+  const [editedHeaders, setEditedHeaders] = useState<string[]>([]);
+  const [hasHydrated, setHasHydrated] = useState(false);
 
   const { toast } = useToast();
   
   useEffect(() => {
-    sessionStorage.setItem('projectFileName', JSON.stringify(projectFileName));
-    sessionStorage.setItem('dataFileName', JSON.stringify(dataFileName));
-    sessionStorage.setItem('requirementsContent', JSON.stringify(requirementsContent));
-    sessionStorage.setItem('editedData', JSON.stringify(editedData));
-    sessionStorage.setItem('editedHeaders', JSON.stringify(editedHeaders));
-    sessionStorage.setItem('dependencyCheckResult', JSON.stringify(dependencyCheckResult));
-  }, [projectFileName, dataFileName, requirementsContent, editedData, editedHeaders, dependencyCheckResult]);
+    if (hasHydrated) {
+        sessionStorage.setItem('projectFileName', JSON.stringify(projectFileName));
+        sessionStorage.setItem('dataFileName', JSON.stringify(dataFileName));
+        sessionStorage.setItem('requirementsContent', JSON.stringify(requirementsContent));
+        sessionStorage.setItem('editedData', JSON.stringify(editedData));
+        sessionStorage.setItem('editedHeaders', JSON.stringify(editedHeaders));
+        sessionStorage.setItem('dependencyCheckResult', JSON.stringify(dependencyCheckResult));
+    }
+  }, [projectFileName, dataFileName, requirementsContent, editedData, editedHeaders, dependencyCheckResult, hasHydrated]);
+  
+  useEffect(() => {
+    setProjectFileName(getInitialState('projectFileName', null));
+    setDataFileName(getInitialState('dataFileName', null));
+    setRequirementsContent(getInitialState('requirementsContent', null));
+    setDependencyCheckResult(getInitialState('dependencyCheckResult', null));
+    setEditedData(getInitialState('editedData', []));
+    setEditedHeaders(getInitialState('editedHeaders', []));
+    setHasHydrated(true);
+  }, []);
 
   useEffect(() => {
     if (projectFileName === null) {
@@ -133,10 +147,17 @@ export function ExecutionProvider({ children }: { children: ReactNode }) {
     setSuiteLoadError(null);
     try {
         const response = await fetch('/api/list-suites');
+        
         if (!response.ok) {
-            const errorData = await response.json();
-            throw new Error(errorData.error || 'Failed to fetch suites from the backend.');
+            let errorData;
+            try {
+              errorData = await response.json();
+            } catch (e) {
+              throw new Error(`Backend returned a non-JSON error: ${response.statusText}`);
+            }
+            throw new Error(errorData.error || `Failed to fetch suites from the backend. Status: ${response.status}`);
         }
+        
         const suites = await response.json();
         setTestSuites(suites);
     } catch (e: any) {
@@ -411,24 +432,20 @@ export function ExecutionProvider({ children }: { children: ReactNode }) {
       const buffer = await readFileAsArrayBuffer(file);
       const zip = await JSZip.loadAsync(buffer);
       
-      let reqFileFound = false;
-      const reqFilePromises: Promise<void>[] = [];
-
+      let reqFileEntry: JSZip.JSZipObject | null = null;
+      
       zip.forEach((relativePath, zipEntry) => {
-          const fileName = zipEntry.name.toLowerCase();
-          // Check for requirements.txt in any directory
-          if (fileName.endsWith('requirements.txt') && !zipEntry.dir) {
-              reqFileFound = true;
-              const promise = zipEntry.async('string').then(content => {
-                  setRequirementsContent(content);
-              });
-              reqFilePromises.push(promise);
-          }
+        // Find a file named 'requirements.txt' in any directory, case-insensitive
+        if (!zipEntry.dir && relativePath.toLowerCase().endsWith('requirements.txt')) {
+            reqFileEntry = zipEntry;
+        }
       });
 
-      await Promise.all(reqFilePromises);
 
-      if (!reqFileFound) {
+      if (reqFileEntry) {
+          const content = await reqFileEntry.async('string');
+          setRequirementsContent(content);
+      } else {
         setRequirementsContent(null);
         toast({
             title: 'Info',
@@ -529,6 +546,7 @@ export function ExecutionProvider({ children }: { children: ReactNode }) {
     setEditedData,
     editedHeaders,
     setEditedHeaders,
+    hasHydrated,
     fetchSuites,
     handleInputChange,
     handleRun,

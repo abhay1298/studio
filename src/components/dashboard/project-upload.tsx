@@ -20,6 +20,8 @@ import { useToast } from '@/hooks/use-toast';
 import { UploadCloud, FileCheck2, FileX2, Pencil, GitBranch, Loader2, FolderArchive, FileSpreadsheet } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../ui/tabs';
+import { useExecutionContext } from '@/contexts/execution-context';
+import { Skeleton } from '../ui/skeleton';
 
 
 type ProjectUploadProps = {
@@ -41,6 +43,7 @@ export function ProjectUpload({
 }: ProjectUploadProps) {
   const { toast } = useToast();
   const router = useRouter();
+  const { hasHydrated } = useExecutionContext();
   const [gitUrl, setGitUrl] = useState('');
   const [isCloning, setIsCloning] = useState(false);
 
@@ -119,6 +122,15 @@ export function ProjectUpload({
     }, 2000);
   };
   
+  const renderLoadingSkeleton = () => (
+    <CardContent className="pt-6">
+      <div className="space-y-4">
+        <Skeleton className="h-10 w-full" />
+        <Skeleton className="h-10 w-full" />
+      </div>
+    </CardContent>
+  );
+
   return (
     <div className="grid md:grid-cols-2 gap-6">
     <Card>
@@ -129,7 +141,9 @@ export function ProjectUpload({
         </CardDescription>
       </CardHeader>
       
-      {!projectFileName ? (
+      {!hasHydrated ? (
+        renderLoadingSkeleton()
+      ) : !projectFileName ? (
         <Tabs defaultValue="upload" className="w-full">
             <TabsList className="grid w-full grid-cols-2 mx-6" style={{width: 'calc(100% - 3rem)'}}>
                 <TabsTrigger value="git" disabled={isCloning}>
@@ -184,7 +198,7 @@ export function ProjectUpload({
             </TabsContent>
         </Tabs>
       ) : (
-        <CardContent>
+        <CardContent className="pt-6">
              <div className="bg-muted/50 rounded-lg p-4">
                 <div className="flex items-center justify-between">
                     <div className="flex items-center gap-3">
@@ -209,8 +223,12 @@ export function ProjectUpload({
           Upload and manage the Excel or CSV file for orchestrator runs.
         </CardDescription>
       </CardHeader>
-      <CardContent>
-        {!dataFileName ? (
+      <CardContent className="pt-6">
+        {!hasHydrated ? (
+           <div className="space-y-4">
+             <Skeleton className="h-10 w-1/2" />
+           </div>
+        ) : !dataFileName ? (
             <div className="grid gap-2">
             <Label htmlFor="data-file">Test Data File (.xlsx, .csv)</Label>
             <div className="flex items-center gap-2">
@@ -246,7 +264,7 @@ export function ProjectUpload({
         )}
       </CardContent>
        
-       {dataFileName && (
+       {dataFileName && hasHydrated && (
         <CardFooter>
           <Button variant="outline" className="w-full" onClick={handleEditClick}>
             <Pencil className="mr-2 h-4 w-4" />
