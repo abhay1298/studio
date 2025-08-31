@@ -50,13 +50,13 @@ interface ExecutionContextType {
   handleDataFileUpload: (file: File | null) => void;
   clearProjectFile: () => void;
   clearDataFile: () => void;
-  checkDependencies: () => Promise<void>;
+  checkDependencies: () => void;
   installDependencies: () => void;
 }
 
 const ExecutionContext = createContext<ExecutionContextType | undefined>(undefined);
 
-const getInitialState = <T,>(key: string, defaultValue: T): T => {
+const getInitialState = <T extends unknown>(key: string, defaultValue: T): T => {
     if (typeof window === 'undefined') {
         return defaultValue;
     }
@@ -402,35 +402,44 @@ export function ExecutionProvider({ children }: { children: ReactNode }) {
     }
   
     setProjectFileName(file.name);
+    // Reset dependant state
+    setRequirementsContent(null);
+    setDependencyCheckResult(null);
   
     try {
       const buffer = await readFileAsArrayBuffer(file);
       const zip = await JSZip.loadAsync(buffer);
-      let reqsFound = false;
-  
-      // Find and read requirements.txt
-      const reqFile = Object.values(zip.files).find(f => f.name.endsWith('requirements.txt') && !f.dir);
-      if (reqFile) {
+      
+      const reqFileKey = Object.keys(zip.files).find(
+        (relativePath) => relativePath.toLowerCase().endsWith('requirements.txt') && !zip.files[relativePath].dir
+      );
+
+      if (reqFileKey) {
+        const reqFile = zip.files[reqFileKey];
         const content = await reqFile.async('string');
         setRequirementsContent(content);
-        reqsFound = true;
+        toast({
+            title: 'Project Inspected',
+            description: `${file.name} loaded and requirements.txt found.`,
+            action: <FileCheck2 className="text-green-500" />,
+        });
       } else {
         setRequirementsContent(null);
+        toast({
+            title: 'Project Inspected',
+            description: `requirements.txt not found in project.`,
+        });
       }
       
-      // Find and process a data file (CSV or XLSX)
-      const dataFile = Object.values(zip.files).find(f => (f.name.endsWith('.csv') || f.name.endsWith('.xlsx')) && !f.dir);
-      if (dataFile) {
+      const dataFileKey = Object.keys(zip.files).find(
+        (relativePath) => (relativePath.toLowerCase().endsWith('.csv') || relativePath.toLowerCase().endsWith('.xlsx')) && !zip.files[relativePath].dir
+      );
+      if (dataFileKey) {
+        const dataFile = zip.files[dataFileKey];
         const dataBuffer = await dataFile.async('arraybuffer');
         setDataFileName(dataFile.name);
         await parseAndSetDataFile(dataBuffer, dataFile.name);
       }
-
-      toast({
-        title: 'Project Inspected Successfully',
-        description: `${file.name} loaded. ${reqsFound ? 'requirements.txt found.' : 'requirements.txt not found.'}`,
-        action: <FileCheck2 className="text-green-500" />,
-      });
   
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
@@ -438,7 +447,7 @@ export function ExecutionProvider({ children }: { children: ReactNode }) {
       toast({
         variant: 'destructive',
         title: 'Error processing project',
-        description: `Could not process the project file. Error: ${errorMessage}`,
+        description: `Could not process the project file. It may be corrupted or not a valid zip.`,
       });
       clearProjectFile();
     }
@@ -538,3 +547,5 @@ export function useExecutionContext() {
   }
   return context;
 }
+
+    
