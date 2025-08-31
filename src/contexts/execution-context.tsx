@@ -3,11 +3,12 @@
 
 import { createContext, useContext, useState, useCallback, ReactNode, useEffect, Dispatch, SetStateAction } from 'react';
 import { useToast } from "@/hooks/use-toast";
-import { CheckCircle2, FileCheck2, FileX2, XCircle } from 'lucide-react';
+import { CheckCircle2, FileCheck2, XCircle } from 'lucide-react';
 import Papa from 'papaparse';
 import * as XLSX from 'xlsx';
 import type { TestSuite } from '@/components/dashboard/project-explorer';
 import JSZip from 'jszip';
+import type { DependencyStatus } from '@/components/dashboard/dependency-checker';
 
 
 type ExecutionStatus = "idle" | "running" | "success" | "failed" | "stopped";
@@ -30,6 +31,9 @@ interface ExecutionContextType {
   dataFileName: string | null;
   
   requirementsContent: string | null;
+  dependencyCheckResult: DependencyStatus[] | null;
+  isCheckingDependencies: boolean;
+
   testSuites: TestSuite[];
   isLoadingSuites: boolean;
   suiteLoadError: string | null;
@@ -46,6 +50,8 @@ interface ExecutionContextType {
   handleDataFileUpload: (file: File | null) => void;
   clearProjectFile: () => void;
   clearDataFile: () => void;
+  checkDependencies: () => Promise<void>;
+  installDependencies: () => void;
 }
 
 const ExecutionContext = createContext<ExecutionContextType | undefined>(undefined);
@@ -78,30 +84,6 @@ const readFileAsArrayBuffer = (file: File): Promise<ArrayBuffer> => {
   });
 };
 
-const fileToDataURL = (file: File): Promise<string> => {
-    return new Promise((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onload = () => resolve(reader.result as string);
-        reader.onerror = () => reject(new Error(`Failed to read file: ${reader.error ? reader.error.message : 'Unknown error'}`));
-        reader.readAsDataURL(file);
-    });
-};
-
-const dataURLtoBlob = (dataurl: string): Blob => {
-    const arr = dataurl.split(',');
-    const mimeMatch = arr[0].match(/:(.*?);/);
-    if (!mimeMatch) throw new Error('Could not parse MIME type from data URL');
-    const mime = mimeMatch[1];
-    const bstr = atob(arr[1]);
-    let n = bstr.length;
-    const u8arr = new Uint8Array(n);
-    while (n--) {
-        u8arr[n] = bstr.charCodeAt(n);
-    }
-    return new Blob([u8arr], { type: mime });
-};
-
-
 export function ExecutionProvider({ children }: { children: ReactNode }) {
   const [status, setStatus] = useState<ExecutionStatus>("idle");
   const [logs, setLogs] = useState<string[]>([]);
@@ -115,8 +97,11 @@ export function ExecutionProvider({ children }: { children: ReactNode }) {
 
   const [projectFileName, setProjectFileName] = useState<string | null>(() => getInitialState('projectFileName', null));
   const [dataFileName, setDataFileName] = useState<string | null>(() => getInitialState('dataFileName', null));
-  const [dataFileContent, setDataFileContent] = useState<string | null>(() => getInitialState('dataFileContent', null));
+  
   const [requirementsContent, setRequirementsContent] = useState<string | null>(() => getInitialState('requirementsContent', null));
+  const [dependencyCheckResult, setDependencyCheckResult] = useState<DependencyStatus[] | null>(() => getInitialState('dependencyCheckResult', null));
+  const [isCheckingDependencies, setIsCheckingDependencies] = useState(false);
+
 
   const [testSuites, setTestSuites] = useState<TestSuite[]>([]);
   const [isLoadingSuites, setIsLoadingSuites] = useState(false);
@@ -130,11 +115,11 @@ export function ExecutionProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     sessionStorage.setItem('projectFileName', JSON.stringify(projectFileName));
     sessionStorage.setItem('dataFileName', JSON.stringify(dataFileName));
-    sessionStorage.setItem('dataFileContent', JSON.stringify(dataFileContent));
     sessionStorage.setItem('requirementsContent', JSON.stringify(requirementsContent));
     sessionStorage.setItem('editedData', JSON.stringify(editedData));
     sessionStorage.setItem('editedHeaders', JSON.stringify(editedHeaders));
-  }, [projectFileName, dataFileName, dataFileContent, requirementsContent, editedData, editedHeaders]);
+    sessionStorage.setItem('dependencyCheckResult', JSON.stringify(dependencyCheckResult));
+  }, [projectFileName, dataFileName, requirementsContent, editedData, editedHeaders, dependencyCheckResult]);
   
   const fetchSuites = useCallback(async () => {
     setIsLoadingSuites(true);
@@ -340,11 +325,10 @@ export function ExecutionProvider({ children }: { children: ReactNode }) {
     }
   }, [addLog, toast]);
 
-  const parseAndSetDataFile = useCallback(async (dataFileContent: string, dataFileName: string) => {
+  const parseAndSetDataFile = useCallback(async (fileContent: ArrayBuffer, dataFileName: string) => {
     try {
-      const blob = dataURLtoBlob(dataFileContent);
       if (dataFileName.endsWith('.csv')) {
-        const text = await blob.text();
+        const text = new TextDecoder().decode(fileContent);
         Papa.parse(text, {
           header: true,
           skipEmptyLines: true,
@@ -356,8 +340,7 @@ export function ExecutionProvider({ children }: { children: ReactNode }) {
           }
         });
       } else if (dataFileName.endsWith('.xlsx')) {
-        const arrayBuffer = await blob.arrayBuffer();
-        const wb = XLSX.read(arrayBuffer, { type: 'array' });
+        const wb = XLSX.read(fileContent, { type: 'array' });
         const wsname = wb.SheetNames[0];
         const ws = wb.Sheets[wsname];
         const jsonData: any[][] = XLSX.utils.sheet_to_json(ws, { header: 1 });
@@ -377,12 +360,12 @@ export function ExecutionProvider({ children }: { children: ReactNode }) {
   const clearProjectFile = useCallback(() => {
     setProjectFileName(null);
     setRequirementsContent(null);
+    setDependencyCheckResult(null);
     toast({ title: 'Project Cleared' });
   }, [toast]);
 
   const clearDataFile = useCallback(() => {
     setDataFileName(null);
-    setDataFileContent(null);
     setEditedData([]);
     setEditedHeaders([]);
     toast({ title: 'Data File Cleared' });
@@ -395,11 +378,9 @@ export function ExecutionProvider({ children }: { children: ReactNode }) {
     }
     
     try {
-      const dataUrl = await fileToDataURL(file);
-
-      setDataFileContent(dataUrl);
       setDataFileName(file.name);
-      await parseAndSetDataFile(dataUrl, file.name);
+      const buffer = await readFileAsArrayBuffer(file);
+      await parseAndSetDataFile(buffer, file.name);
 
       toast({
         title: 'Data File Uploaded',
@@ -440,11 +421,9 @@ export function ExecutionProvider({ children }: { children: ReactNode }) {
       // Find and process a data file (CSV or XLSX)
       const dataFile = Object.values(zip.files).find(f => (f.name.endsWith('.csv') || f.name.endsWith('.xlsx')) && !f.dir);
       if (dataFile) {
-        const dataUrl = await dataFile.async('base64');
-        const fullDataUrl = `data:${dataFile.name.endsWith('.csv') ? 'text/csv' : 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'};base64,${dataUrl}`;
-        setDataFileContent(fullDataUrl);
+        const dataBuffer = await dataFile.async('arraybuffer');
         setDataFileName(dataFile.name);
-        await parseAndSetDataFile(fullDataUrl, dataFile.name);
+        await parseAndSetDataFile(dataBuffer, dataFile.name);
       }
 
       toast({
@@ -464,6 +443,56 @@ export function ExecutionProvider({ children }: { children: ReactNode }) {
       clearProjectFile();
     }
   }, [clearProjectFile, parseAndSetDataFile, toast]);
+
+  const checkDependencies = useCallback(async () => {
+    if (!requirementsContent) {
+        toast({
+            variant: 'destructive',
+            title: 'No requirements.txt found',
+            description: 'Cannot check dependencies because no requirements.txt was found in the project.',
+        });
+        setDependencyCheckResult(null);
+        return;
+    }
+    setIsCheckingDependencies(true);
+    setDependencyCheckResult(null);
+    try {
+      const response = await fetch('/api/check-dependencies', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ requirements: requirementsContent }),
+      });
+      if (!response.ok) throw new Error('Failed to check dependencies.');
+
+      const result: DependencyStatus[] = await response.json();
+      setDependencyCheckResult(result);
+    } catch (error) {
+      toast({ variant: 'destructive', title: 'Error', description: 'Could not connect to the dependency checker service.' });
+      setDependencyCheckResult(null);
+    } finally {
+        setIsCheckingDependencies(false);
+    }
+  }, [requirementsContent, toast]);
+  
+  const installDependencies = useCallback(() => {
+    if (!dependencyCheckResult) return;
+    
+    // This is a simulation of installation
+    toast({
+        title: 'Installation in Progress',
+        description: 'Simulating installation of missing packages...',
+    });
+    
+    setTimeout(() => {
+        const newStatuses = dependencyCheckResult.map(d => ({ ...d, status: 'installed' as 'installed' }));
+        setDependencyCheckResult(newStatuses);
+        toast({
+            title: 'Installation Complete',
+            description: 'All missing libraries have been "installed".',
+            action: <CheckCircle2 className="text-green-500" />
+        });
+    }, 2000);
+  }, [dependencyCheckResult, toast]);
   
   const value = {
     status,
@@ -473,6 +502,8 @@ export function ExecutionProvider({ children }: { children: ReactNode }) {
     projectFileName,
     dataFileName,
     requirementsContent,
+    dependencyCheckResult,
+    isCheckingDependencies,
     testSuites,
     isLoadingSuites,
     suiteLoadError,
@@ -489,6 +520,8 @@ export function ExecutionProvider({ children }: { children: ReactNode }) {
     handleDataFileUpload,
     clearProjectFile,
     clearDataFile,
+    checkDependencies,
+    installDependencies
   };
 
   return (
@@ -505,5 +538,3 @@ export function useExecutionContext() {
   }
   return context;
 }
-
-    

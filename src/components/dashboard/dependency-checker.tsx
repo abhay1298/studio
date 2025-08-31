@@ -1,5 +1,4 @@
 
-
 "use client";
 
 import { useState, useEffect } from 'react';
@@ -8,8 +7,8 @@ import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { CheckCircle2, AlertTriangle, XCircle, Loader2, ListTodo, PackageCheck, PackagePlus } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { DependencyStatusDialog } from './dependency-status-dialog';
+import { useExecutionContext } from '@/contexts/execution-context';
 
-type Status = 'idle' | 'checking' | 'success' | 'warning' | 'error' | 'installing';
 export type DependencyStatus = {
     library: string;
     status: 'installed' | 'missing';
@@ -21,80 +20,44 @@ type DependencyCheckerProps = {
 };
 
 export function DependencyChecker({ requirementsContent, projectIsLoaded }: DependencyCheckerProps) {
-  const [status, setStatus] = useState<Status>('idle');
-  const [dependencyStatus, setDependencyStatus] = useState<DependencyStatus[]>([]);
+  const { 
+    checkDependencies, 
+    dependencyCheckResult, 
+    isCheckingDependencies, 
+    installDependencies
+  } = useExecutionContext();
+
   const [isDialogOpen, setIsDialogOpen] = useState(false);
-  const { toast } = useToast();
+  const [isInstalling, setIsInstalling] = useState(false);
 
-  useEffect(() => {
-    // Reset checker state if the project file is cleared
-    if (!projectIsLoaded) {
-      setStatus('idle');
-      setDependencyStatus([]);
-    }
-  }, [projectIsLoaded]);
-
-  const handleCheckDependencies = async () => {
-    if (!requirementsContent) {
-        toast({
-            variant: 'destructive',
-            title: 'No requirements.txt found',
-            description: 'Cannot check dependencies because no requirements.txt was found in the project.',
-        });
-        setStatus('warning');
-        return;
-    }
-    setStatus('checking');
-    try {
-      const response = await fetch('/api/check-dependencies', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ requirements: requirementsContent }),
-      });
-      if (!response.ok) throw new Error('Failed to check dependencies.');
-
-      const result: DependencyStatus[] = await response.json();
-      setDependencyStatus(result);
-      if (result.every(d => d.status === 'installed')) {
-        setStatus('success');
-      } else {
-        setStatus('error');
-      }
-    } catch (error) {
-      toast({ variant: 'destructive', title: 'Error', description: 'Could not connect to the dependency checker service.' });
-      setStatus('idle');
-    }
-  };
-
+  // Determine status based on context state
+  const status = (() => {
+    if (isCheckingDependencies) return 'checking';
+    if (!dependencyCheckResult) return 'idle';
+    if (dependencyCheckResult.every(d => d.status === 'installed')) return 'success';
+    if (dependencyCheckResult.some(d => d.status === 'missing')) return 'error';
+    return 'idle';
+  })();
+  
   const handleInstallMissing = () => {
-    setStatus('installing');
-    toast({
-        title: 'Installation in Progress',
-        description: 'Simulating installation of missing packages...',
-    });
+    setIsInstalling(true);
+    installDependencies();
     setTimeout(() => {
-        const newStatuses = dependencyStatus.map(d => ({ ...d, status: 'installed' as 'installed' }));
-        setDependencyStatus(newStatuses);
-        setStatus('success');
+        setIsInstalling(false);
         setIsDialogOpen(false);
-        toast({
-            title: 'Installation Complete',
-            description: 'All missing libraries have been "installed".',
-            action: <CheckCircle2 className="text-green-500" />
-        });
     }, 2000);
   };
-
-  const missingCount = dependencyStatus.filter(d => d.status === 'missing').length;
+  
+  const missingCount = dependencyCheckResult?.filter(d => d.status === 'missing').length || 0;
 
   return (
     <>
       <div className="grid gap-4">
-        <Button onClick={handleCheckDependencies} disabled={status === 'checking' || !projectIsLoaded}>
-          {status === 'checking' ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <ListTodo className="mr-2 h-4 w-4" />}
+        <Button onClick={checkDependencies} disabled={isCheckingDependencies || !projectIsLoaded}>
+          {isCheckingDependencies ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <ListTodo className="mr-2 h-4 w-4" />}
           Scan Dependencies
         </Button>
-        {status === 'warning' && (
+        {!requirementsContent && projectIsLoaded && status !== 'checking' && (
             <Alert variant="destructive">
                 <AlertTriangle className="h-4 w-4" />
                 <AlertTitle>Not Found</AlertTitle>
@@ -125,12 +88,10 @@ export function DependencyChecker({ requirementsContent, projectIsLoaded }: Depe
       <DependencyStatusDialog
           isOpen={isDialogOpen}
           onOpenChange={setIsDialogOpen}
-          status={dependencyStatus}
+          status={dependencyCheckResult || []}
           onInstall={handleInstallMissing}
-          isInstalling={status === 'installing'}
+          isInstalling={isInstalling}
       />
     </>
   );
 }
-
-    
