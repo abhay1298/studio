@@ -241,9 +241,9 @@ export default function ReportsPage() {
                             <Eye className="h-4 w-4" />
                             <span className="sr-only">View Report</span>
                         </Button>
-                         <Button variant="outline" size="icon" onClick={() => handleDownloadFile(report.reportFile)} disabled={!report.reportFile}>
+                         <Button variant="outline" size="icon" onClick={() => handleDownloadFile(report.logFile)} disabled={!report.logFile}>
                             <Download className="h-4 w-4" />
-                            <span className="sr-only">Download Report</span>
+                            <span className="sr-only">Download Log</span>
                         </Button>
                          <Button variant="outline" size="icon" onClick={() => handleViewFile(report.videoFile)} disabled={!report.videoFile}>
                             <Clapperboard className="h-4 w-4" />

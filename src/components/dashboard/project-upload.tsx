@@ -128,7 +128,6 @@ export function ProjectUpload({
                             className="hidden"
                             onChange={handleProjectFolderChange}
                             webkitdirectory="true"
-                            directory="true"
                         />
                     </div>
                 </div>

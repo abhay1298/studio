@@ -31,8 +31,8 @@ type RecentRun = {
   date: string;
 };
 
-export default function DashboardPageContent() {
-  const { projectFileName } = useExecutionContext();
+export default function DashboardPage() {
+  const { projectFileName, hasHydrated } = useExecutionContext();
   const [recentRuns, setRecentRuns] = useState<RecentRun[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   
@@ -40,7 +40,6 @@ export default function DashboardPageContent() {
     totalRuns: 0,
     passRate: 'N/A',
     avgDuration: '--',
-    activeProjectName: 'Not Configured'
   });
   
   const loadRunHistory = () => {
@@ -133,8 +132,8 @@ export default function DashboardPageContent() {
           <Card>
             <CardHeader className="pb-2">
               <CardDescription>Active Project</CardDescription>
-               <CardTitle className="font-headline text-3xl truncate" title={projectFileName || 'Not Configured'}>
-                 {projectFileName || 'Not Configured'}
+               <CardTitle className="font-headline text-3xl truncate" title={!hasHydrated ? 'Loading...' : (projectFileName || 'Not Configured')}>
+                 {!hasHydrated ? <Skeleton className="w-40 h-8" /> : (projectFileName || 'Not Configured')}
               </CardTitle>
             </CardHeader>
             <CardContent>
