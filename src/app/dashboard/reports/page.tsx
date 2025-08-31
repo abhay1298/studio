@@ -240,21 +240,21 @@ export default function ReportsPage() {
                         {report.fail}
                     </TableCell>
                     <TableCell className="text-right space-x-2">
-                        <Button variant="outline" size="icon" onClick={() => handleViewFile(report.reportFile)} disabled={!report.reportFile}>
+                        <Button variant="outline" size="icon" onClick={() => handleViewFile(report.reportFile)} disabled={!report.reportFile} title="View Report">
                             <Eye className="h-4 w-4" />
                             <span className="sr-only">View Report</span>
                         </Button>
-                         <Button variant="outline" size="icon" onClick={() => handleDownloadFile(report.logFile)} disabled={!report.logFile}>
+                         <Button variant="outline" size="icon" onClick={() => handleDownloadFile(report.logFile)} disabled={!report.logFile} title="Download Log">
                             <Download className="h-4 w-4" />
                             <span className="sr-only">Download Log</span>
                         </Button>
-                         <Button variant="outline" size="icon" onClick={() => handleViewFile(report.videoFile)} disabled={!report.videoFile}>
+                         <Button variant="outline" size="icon" onClick={() => handleViewFile(report.videoFile)} disabled={!report.videoFile} title="View Video">
                             <Clapperboard className="h-4 w-4" />
                             <span className="sr-only">View Video</span>
                         </Button>
                          <AlertDialog>
                             <AlertDialogTrigger asChild>
-                                <Button variant="destructive" size="icon">
+                                <Button variant="destructive" size="icon" title="Delete Run">
                                     <Trash2 className="h-4 w-4" />
                                     <span className="sr-only">Delete Run</span>
                                 </Button>
