@@ -175,8 +175,19 @@ export function ExecutionProvider({ children }: { children: ReactNode }) {
         const response = await fetch('/api/list-suites');
         
         if (!response.ok) {
-            const errorData = await response.json();
-            throw new Error(errorData.error || `Failed to fetch suites from the backend. Status: ${response.status}`);
+            let errorMessage;
+            try {
+                // Try to parse the error response as JSON
+                const errorData = await response.json();
+                errorMessage = errorData.error || `Failed to fetch suites. Status: ${response.status}`;
+            } catch (e) {
+                // If JSON parsing fails, use the response text as the error
+                errorMessage = await response.text();
+                if (!errorMessage) {
+                    errorMessage = `Failed to fetch suites. Status: ${response.status}`;
+                }
+            }
+            throw new Error(errorMessage);
         }
         
         const suites = await response.json();
