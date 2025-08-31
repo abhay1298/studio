@@ -6,7 +6,6 @@ import { useToast } from "@/hooks/use-toast";
 import { CheckCircle2, FileCheck2, XCircle } from 'lucide-react';
 import Papa from 'papaparse';
 import * as XLSX from 'xlsx';
-import JSZip from 'jszip';
 import type { TestSuite } from '@/components/dashboard/project-explorer';
 import type { DependencyStatus } from '@/components/dashboard/dependency-checker';
 
@@ -47,13 +46,12 @@ interface ExecutionContextType {
   handleRun: (runType: string) => Promise<void>;
   handleStop: () => Promise<void>;
   clearLogs: () => void;
-  handleProjectFileUpload: (file: File | null) => void;
+  handleProjectFileUpload: (files: FileList | null) => void;
   handleDataFileUpload: (file: File | null) => void;
   clearProjectFile: () => void;
   clearDataFile: () => void;
   checkDependencies: () => void;
   installDependencies: () => void;
-  handleGitImport: (repoUrl: string) => void;
 }
 
 const ExecutionContext = createContext<ExecutionContextType | undefined>(undefined);
@@ -84,6 +82,15 @@ const readFileAsArrayBuffer = (file: File): Promise<ArrayBuffer> => {
     reader.onerror = () => reject(reader.error);
     reader.readAsArrayBuffer(file);
   });
+};
+
+const readFileAsText = (file: File): Promise<string> => {
+    return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result as string);
+        reader.onerror = () => reject(reader.error);
+        reader.readAsText(file);
+    });
 };
 
 export function ExecutionProvider({ children }: { children: ReactNode }) {
@@ -416,12 +423,19 @@ export function ExecutionProvider({ children }: { children: ReactNode }) {
     }
   }, [clearDataFile, parseAndSetDataFile, toast]);
 
-  const handleProjectFileUpload = useCallback(async (file: File | null) => {
-    if (!file) {
+  const handleProjectFileUpload = useCallback(async (files: FileList | null) => {
+    if (!files || files.length === 0) {
       clearProjectFile();
       return;
     }
-    setProjectFileName(file.name);
+
+    const fileArray = Array.from(files);
+    
+    // Set project name from the folder name
+    const firstPath = files[0].webkitRelativePath;
+    const projectName = firstPath.split('/')[0];
+    setProjectFileName(projectName);
+
     setRequirementsContent(null);
     if (!dataFileName) {
         setDataFileName(null);
@@ -430,34 +444,34 @@ export function ExecutionProvider({ children }: { children: ReactNode }) {
     }
 
     try {
-        const zip = await JSZip.loadAsync(file);
         let foundReqs = false;
         let foundData = false;
 
         const filePromises: Promise<void>[] = [];
-        
-        zip.forEach((relativePath, zipEntry) => {
-            const isReqs = zipEntry.name.toLowerCase().endsWith('requirements.txt') && !zipEntry.dir;
-            const isData = (zipEntry.name.toLowerCase().endsWith('.csv') || zipEntry.name.toLowerCase().endsWith('.xlsx')) && !zipEntry.dir;
+
+        for (const file of fileArray) {
+            const isReqs = file.name.toLowerCase() === 'requirements.txt';
+            const isData = (file.name.toLowerCase().endsWith('.csv') || file.name.toLowerCase().endsWith('.xlsx'));
 
             if (isReqs) {
                 foundReqs = true;
                 filePromises.push(
-                    zipEntry.async('string').then(content => {
+                    readFileAsText(file).then(content => {
                         setRequirementsContent(content);
                     })
                 );
             }
+
             if (isData && !dataFileName) {
                 foundData = true;
                 filePromises.push(
-                    zipEntry.async('arraybuffer').then(buffer => {
-                        setDataFileName(zipEntry.name.split('/').pop() || zipEntry.name);
-                        parseAndSetDataFile(buffer, zipEntry.name);
+                    readFileAsArrayBuffer(file).then(buffer => {
+                        setDataFileName(file.name);
+                        parseAndSetDataFile(buffer, file.name);
                     })
                 );
             }
-        });
+        }
 
         await Promise.all(filePromises);
 
@@ -470,46 +484,18 @@ export function ExecutionProvider({ children }: { children: ReactNode }) {
         
         toast({
             title: 'Project Loaded',
-            description: `${file.name} loaded successfully.`,
+            description: `${projectName} loaded successfully.`,
             action: <FileCheck2 className="text-green-500" />,
         });
 
     } catch (error) {
         toast({
             variant: 'destructive',
-            title: 'Error processing project zip file',
-            description: 'Could not read the selected file. Please ensure it is a valid zip file.',
+            title: 'Error processing project folder',
+            description: 'Could not read the selected folder. Please try again.',
         });
     }
   }, [clearProjectFile, parseAndSetDataFile, toast, dataFileName]);
-  
-  const handleGitImport = useCallback(async (repoUrl: string) => {
-    if (!repoUrl) {
-        toast({ variant: 'destructive', title: 'Git URL cannot be empty.'});
-        return;
-    }
-    
-    // Simulate cloning
-    const repoName = repoUrl.split('/').pop()?.replace('.git', '') || 'git-project';
-    setProjectFileName(repoName);
-    
-    // Simulate finding files
-    const dummyReqs = 'Flask==2.0.1\nrobotframework==4.1.3\nrequests==2.26.0';
-    setRequirementsContent(dummyReqs);
-
-    const dummyCsvData = `id,priority,test_case\n1,high,Login Test\n2,medium,Search Functionality`;
-    const dummyCsvFile = new File([dummyCsvData], "test_data.csv", { type: "text/csv" });
-    const buffer = await readFileAsArrayBuffer(dummyCsvFile);
-    await parseAndSetDataFile(buffer, "test_data.csv");
-    setDataFileName("test_data.csv");
-
-    toast({
-        title: 'Project Imported',
-        description: `Simulated import of '${repoName}'. Found dummy requirements and data file.`,
-        action: <FileCheck2 className="text-green-500" />,
-    });
-
-  }, [toast, parseAndSetDataFile]);
 
   const checkDependencies = useCallback(async () => {
     if (!requirementsContent) {
@@ -589,7 +575,6 @@ export function ExecutionProvider({ children }: { children: ReactNode }) {
     clearDataFile,
     checkDependencies,
     installDependencies,
-    handleGitImport
   };
 
   return (
