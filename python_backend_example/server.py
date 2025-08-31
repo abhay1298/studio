@@ -25,7 +25,7 @@ SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 # This is the directory that contains your .robot files.
 # Example for Windows: TESTS_DIRECTORY = 'C:/Users/YourUser/Documents/RobotMaestro/tests'
 # Example for macOS/Linux: TESTS_DIRECTORY = '/Users/YourUser/Documents/RobotMaestro/tests'
-TESTS_DIRECTORY = os.path.join(SCRIPT_DIR, '..', '..', 'tests_example') # A default example path
+TESTS_DIRECTORY = 'C:/Users/c-aku/GitLab/qa-automation-hub-robot-framework/primecenter_automation/tests' # A default example path
 
 if not os.path.exists(TESTS_DIRECTORY):
     print("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
