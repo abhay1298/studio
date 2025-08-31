@@ -64,9 +64,9 @@ export default function ResultsPage() {
   const [allRuns, setAllRuns] = useState<RunHistory[]>([]);
   const [selectedRunId, setSelectedRunId] = useState<string>('overall');
   
-  const [passFailData, setPassFailData] = useState([]);
-  const [monthlyData, setMonthlyData] = useState([]);
-  const [executionTrendData, setExecutionTrendData] = useState([]);
+  const [passFailData, setPassFailData] = useState<{name: string, value: number, fill: string}[]>([]);
+  const [monthlyData, setMonthlyData] = useState<{month: string, passed: number, failed: number}[]>([]);
+  const [executionTrendData, setExecutionTrendData] = useState<{month: string, executions: number}[]>([]);
   
   const [isLoading, setIsLoading] = useState(true);
   const [hasData, setHasData] = useState(false);
@@ -78,15 +78,20 @@ export default function ResultsPage() {
        if (typeof window !== 'undefined') {
         const history = localStorage.getItem('robotMaestroRuns');
         if (history) {
-            const runs: RunHistory[] = JSON.parse(history);
-            if (runs.length > 0) {
-              setAllRuns(runs.map(run => ({
-                id: run.id || `RUN-${new Date(run.date).getTime()}`,
-                ...run
-              })).reverse());
-              setHasData(true);
-            } else {
-              setHasData(false);
+            try {
+              const runs: RunHistory[] = JSON.parse(history);
+              if (runs.length > 0) {
+                setAllRuns(runs.map(run => ({
+                  id: run.id || `RUN-${new Date(run.date).getTime()}`,
+                  ...run
+                })).reverse());
+                setHasData(true);
+              } else {
+                setHasData(false);
+              }
+            } catch (e) {
+                console.error("Failed to parse run history", e);
+                setHasData(false);
             }
         }
        }
@@ -116,13 +121,17 @@ export default function ResultsPage() {
     setPassFailData([
       { name: 'Passed', value: passedCount, fill: 'hsl(var(--chart-2))'},
       { name: 'Failed', value: failedCount, fill: 'hsl(var(--destructive))' },
-    ]);
+    ].filter(d => d.value > 0)); // Filter out zero-value entries for cleaner pie chart
+
+    // For the monthly charts, we should always process all runs to show the trend,
+    // regardless of the selection. The selection only affects the pie chart.
+    const allRunsForTrends = allRuns;
 
     // 2. Process for Monthly Bar Chart
     const sixMonthsAgo = startOfMonth(subMonths(new Date(), 5));
     const monthlyCounts: { [key: string]: { passed: number, failed: number } } = {};
 
-    runsToProcess.forEach(run => {
+    allRunsForTrends.forEach(run => {
       const runDate = new Date(run.date);
       if (runDate >= sixMonthsAgo) {
         const month = format(runDate, 'MMM yyyy');
@@ -273,7 +282,7 @@ export default function ResultsPage() {
         <Card>
           <CardHeader>
             <CardTitle className="font-headline">Monthly Execution Trends</CardTitle>
-            <CardDescription>{selectedRunId === 'overall' ? 'Pass vs. Fail over the last 6 months' : 'Execution results for the selected month'}</CardDescription>
+            <CardDescription>Pass vs. Fail over the last 6 months</CardDescription>
           </CardHeader>
           <CardContent>
              <ChartContainer config={chartConfig} className="h-[250px] w-full">
@@ -300,7 +309,7 @@ export default function ResultsPage() {
         <Card>
           <CardHeader>
             <CardTitle className="font-headline">Execution Volume Trend</CardTitle>
-            <CardDescription>{selectedRunId === 'overall' ? 'Total tests run per month' : 'Tests run in the selected month'}</CardDescription>
+            <CardDescription>Total tests run per month</CardDescription>
           </CardHeader>
           <CardContent>
               <ChartContainer config={{

@@ -22,6 +22,7 @@ import { Button } from '@/components/ui/button';
 import { ArrowUpRight, Ban } from 'lucide-react';
 import Link from 'next/link';
 import { Skeleton } from '@/components/ui/skeleton';
+import { useExecutionContext } from '@/contexts/execution-context';
 
 type RecentRun = {
   suite: string;
@@ -31,6 +32,7 @@ type RecentRun = {
 };
 
 export default function DashboardPageContent() {
+  const { projectFileName } = useExecutionContext();
   const [recentRuns, setRecentRuns] = useState<RecentRun[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   
@@ -131,8 +133,8 @@ export default function DashboardPageContent() {
           <Card>
             <CardHeader className="pb-2">
               <CardDescription>Active Project</CardDescription>
-               <CardTitle className="font-headline text-3xl truncate" title={stats.activeProjectName}>
-                 Configured
+               <CardTitle className="font-headline text-3xl truncate" title={projectFileName || 'Not Configured'}>
+                 {projectFileName || 'Not Configured'}
               </CardTitle>
             </CardHeader>
             <CardContent>

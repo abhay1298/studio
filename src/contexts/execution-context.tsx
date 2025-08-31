@@ -27,6 +27,7 @@ interface ExecutionContextType {
   runConfig: RunConfig;
   
   projectFileName: string | null;
+  projectFileSource: 'local' | 'git' | null;
   dataFileName: string | null;
   
   requirementsContent: string | null;
@@ -106,6 +107,7 @@ export function ExecutionProvider({ children }: { children: ReactNode }) {
   });
 
   const [projectFileName, setProjectFileName] = useState<string | null>(null);
+  const [projectFileSource, setProjectFileSource] = useState<'local' | 'git' | null>(null);
   const [dataFileName, setDataFileName] = useState<string | null>(null);
   
   const [requirementsContent, setRequirementsContent] = useState<string | null>(null);
@@ -126,6 +128,7 @@ export function ExecutionProvider({ children }: { children: ReactNode }) {
   // This effect runs once on the client to safely hydrate state from sessionStorage.
   useEffect(() => {
     setProjectFileName(getInitialState('projectFileName', null));
+    setProjectFileSource(getInitialState('projectFileSource', null));
     setDataFileName(getInitialState('dataFileName', null));
     setRequirementsContent(getInitialState('requirementsContent', null));
     setDependencyCheckResult(getInitialState('dependencyCheckResult', null));
@@ -139,6 +142,7 @@ export function ExecutionProvider({ children }: { children: ReactNode }) {
     if (hasHydrated) {
         try {
             sessionStorage.setItem('projectFileName', JSON.stringify(projectFileName));
+            sessionStorage.setItem('projectFileSource', JSON.stringify(projectFileSource));
             sessionStorage.setItem('dataFileName', JSON.stringify(dataFileName));
             sessionStorage.setItem('requirementsContent', JSON.stringify(requirementsContent));
             sessionStorage.setItem('editedData', JSON.stringify(editedData));
@@ -148,15 +152,19 @@ export function ExecutionProvider({ children }: { children: ReactNode }) {
             console.warn(`Error writing to sessionStorage:`, error);
         }
     }
-  }, [projectFileName, dataFileName, requirementsContent, editedData, editedHeaders, dependencyCheckResult, hasHydrated]);
+  }, [projectFileName, projectFileSource, dataFileName, requirementsContent, editedData, editedHeaders, dependencyCheckResult, hasHydrated]);
   
-  // This effect ensures data consistency when the project is changed or cleared.
-  useEffect(() => {
-    if (projectFileName === null) {
-      setRequirementsContent(null);
-      setDependencyCheckResult(null);
-    }
-  }, [projectFileName]);
+  const clearProjectFile = useCallback(() => {
+    setProjectFileName(null);
+    setProjectFileSource(null);
+    setRequirementsContent(null);
+    setDependencyCheckResult(null);
+    // Also clear associated data file
+    setDataFileName(null);
+    setEditedData([]);
+    setEditedHeaders([]);
+    toast({ title: 'Project Cleared' });
+  }, [toast]);
   
   const fetchSuites = useCallback(async () => {
     setIsLoadingSuites(true);
@@ -397,10 +405,6 @@ export function ExecutionProvider({ children }: { children: ReactNode }) {
     }
   }, [toast]);
 
-  const clearProjectFile = useCallback(() => {
-    setProjectFileName(null);
-  }, []);
-
   const clearDataFile = useCallback(() => {
     setDataFileName(null);
     setEditedData([]);
@@ -441,8 +445,13 @@ export function ExecutionProvider({ children }: { children: ReactNode }) {
     const firstPath = files[0].webkitRelativePath;
     const projectName = firstPath.split('/')[0] || 'Uploaded Project';
     setProjectFileName(projectName);
+    setProjectFileSource('local');
 
+    // Reset associated state
     setRequirementsContent(null);
+    setDependencyCheckResult(null);
+    
+    // Only clear data file if none is explicitly loaded
     if (!dataFileName) {
         setDataFileName(null);
         setEditedData([]);
@@ -453,29 +462,29 @@ export function ExecutionProvider({ children }: { children: ReactNode }) {
         let foundReqs = false;
         const dataFilePromises: Promise<void>[] = [];
 
-        for (const file of fileArray) {
-            const path = file.webkitRelativePath.toLowerCase();
+        fileArray.forEach(file => {
+          const path = file.webkitRelativePath.toLowerCase();
 
-            if (path.endsWith('requirements.txt')) {
-                foundReqs = true;
-                await readFileAsText(file).then(content => setRequirementsContent(content));
-            } else if (!dataFileName && (path.endsWith('.csv') || path.endsWith('.xlsx'))) {
-                 dataFilePromises.push(
-                    readFileAsArrayBuffer(file).then(buffer => {
-                        setDataFileName(file.name);
-                        parseAndSetDataFile(buffer, file.name);
-                    })
-                );
-            }
-        }
+          if (path.endsWith('requirements.txt')) {
+            foundReqs = true;
+            readFileAsText(file).then(content => setRequirementsContent(content));
+          } else if (!dataFileName && (path.endsWith('.csv') || path.endsWith('.xlsx'))) {
+              dataFilePromises.push(
+                  readFileAsArrayBuffer(file).then(buffer => {
+                      setDataFileName(file.name);
+                      parseAndSetDataFile(buffer, file.name);
+                  })
+              );
+          }
+        });
         
         await Promise.all(dataFilePromises);
 
         if (!foundReqs) {
-            toast({
-                title: 'Info',
-                description: `requirements.txt not found in the project.`,
-            });
+          toast({
+            title: 'Info',
+            description: `requirements.txt not found in the project.`,
+          });
         }
         
         toast({
@@ -501,6 +510,7 @@ export function ExecutionProvider({ children }: { children: ReactNode }) {
 
     const repoName = url.split('/').pop()?.replace('.git', '') || 'Git Project';
     setProjectFileName(repoName);
+    setProjectFileSource('git');
 
     // Simulate finding files
     const dummyReqs = 'robotframework\nrequests\nselenium';
@@ -572,6 +582,7 @@ export function ExecutionProvider({ children }: { children: ReactNode }) {
     lastFailedLogs,
     runConfig,
     projectFileName,
+    projectFileSource,
     dataFileName,
     requirementsContent,
     dependencyCheckResult,

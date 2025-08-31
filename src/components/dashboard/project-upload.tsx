@@ -22,6 +22,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '../ui/tabs';
 
 type ProjectUploadProps = {
     projectFileName: string | null;
+    projectFileSource: 'local' | 'git' | null;
     dataFileName: string | null;
     onProjectFileChange: (files: FileList | null) => void;
     onDataFileChange: (file: File | null) => void;
@@ -31,6 +32,7 @@ type ProjectUploadProps = {
 
 export function ProjectUpload({ 
     projectFileName,
+    projectFileSource,
     dataFileName,
     onProjectFileChange,
     onDataFileChange,
@@ -82,6 +84,13 @@ export function ProjectUpload({
       </div>
     </CardContent>
   );
+  
+  const getProjectIcon = () => {
+    if (projectFileSource === 'git') {
+      return <GitBranch className="h-6 w-6 text-primary"/>;
+    }
+    return <FolderUp className="h-6 w-6 text-primary"/>;
+  };
 
   return (
     <div className="grid md:grid-cols-2 gap-6">
@@ -145,7 +154,7 @@ export function ProjectUpload({
               <div className="bg-muted/50 rounded-lg p-4">
                   <div className="flex items-center justify-between">
                       <div className="flex items-center gap-3">
-                          <GitBranch className="h-6 w-6 text-primary"/>
+                          {getProjectIcon()}
                           <div className="flex flex-col">
                               <span className="font-semibold">Active Project</span>
                               <span className="text-sm text-muted-foreground truncate max-w-xs">{projectFileName}</span>

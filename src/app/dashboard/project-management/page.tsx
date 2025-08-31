@@ -10,6 +10,7 @@ export default function ProjectManagementPage() {
   const { 
     requirementsContent, 
     projectFileName,
+    projectFileSource,
     dataFileName,
     handleProjectFileUpload,
     handleDataFileUpload,
@@ -24,6 +25,7 @@ export default function ProjectManagementPage() {
       </h1>
       <ProjectUpload 
         projectFileName={projectFileName}
+        projectFileSource={projectFileSource}
         dataFileName={dataFileName}
         onProjectFileChange={handleProjectFileUpload}
         onDataFileChange={handleDataFileUpload}
