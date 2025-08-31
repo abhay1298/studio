@@ -6,7 +6,7 @@ import JSZip from 'jszip';
 import Papa from 'papaparse';
 import * as XLSX from 'xlsx';
 import { useToast } from "@/hooks/use-toast";
-import { CheckCircle2, FileCheck2, GitBranch, XCircle } from 'lucide-react';
+import { CheckCircle2, FileCheck2, GitBranch, XCircle, FileWarning } from 'lucide-react';
 import type { TestSuite } from '@/components/dashboard/project-explorer';
 import type { DependencyStatus } from '@/components/dashboard/dependency-checker';
 
@@ -65,13 +65,8 @@ const getInitialState = <T extends unknown>(key: string, defaultValue: T): T => 
     }
     try {
         const item = window.sessionStorage.getItem(key);
-        if (!item) return defaultValue;
-        if (item === 'null' || item === 'undefined') return defaultValue;
-        try {
-            return JSON.parse(item);
-        } catch {
-            return item as any;
-        }
+        if (!item || item === 'undefined') return defaultValue;
+        return JSON.parse(item);
     } catch (error) {
         console.warn(`Error reading sessionStorage key "${key}":`, error);
         return defaultValue;
@@ -164,7 +159,8 @@ export function ExecutionProvider({ children }: { children: ReactNode }) {
     setProjectFileSource(null);
     setRequirementsContent(null);
     setDependencyCheckResult(null);
-    clearDataFile(); // Also clear data file when project is cleared
+    clearDataFile();
+    setTestSuites([]);
     toast({ title: 'Project Cleared' });
   }, [toast, clearDataFile]);
   
@@ -193,14 +189,6 @@ export function ExecutionProvider({ children }: { children: ReactNode }) {
         setIsLoadingSuites(false);
     }
   }, [projectFileName]);
-
-  useEffect(() => {
-    if (projectFileName) {
-      fetchSuites();
-    } else {
-      setTestSuites([]);
-    }
-  }, [projectFileName, fetchSuites]);
 
   const addLog = useCallback((message: string) => {
     const timestamp = new Date().toLocaleTimeString();
@@ -238,8 +226,8 @@ export function ExecutionProvider({ children }: { children: ReactNode }) {
               logFile,
               videoFile
           };
-          const history = localStorage.getItem('robotMaestroRuns');
-          const runs = history ? JSON.parse(history) : [];
+          const historyJSON = localStorage.getItem('robotMaestroRuns');
+          const runs = historyJSON ? JSON.parse(historyJSON) : [];
           runs.push(newRun);
           localStorage.setItem('robotMaestroRuns', JSON.stringify(runs));
           window.dispatchEvent(new CustomEvent('runsUpdated'));
@@ -286,7 +274,6 @@ export function ExecutionProvider({ children }: { children: ReactNode }) {
   
       addLog("Test execution started successfully on the backend.");
   
-      // Start polling for status
       pollingInterval = setInterval(async () => {
         try {
           const statusResponse = await fetch('/api/status');
@@ -338,7 +325,7 @@ export function ExecutionProvider({ children }: { children: ReactNode }) {
           addLog("Error polling for status. Connection to backend might be lost.");
           toast({ variant: 'destructive', title: 'Connection Error', description: 'Lost connection to the backend during execution.' });
         }
-      }, 2000); // Poll every 2 seconds
+      }, 2000);
   
     } catch (error: any) {
       const endTime = Date.now();
@@ -428,6 +415,20 @@ export function ExecutionProvider({ children }: { children: ReactNode }) {
       clearDataFile();
       return;
     }
+
+    const allowedDataTypes = [
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        'text/csv',
+    ];
+     if (!allowedDataTypes.includes(file.type) && !file.name.endsWith('.csv') && !file.name.endsWith('.xlsx')) {
+        toast({
+            variant: "destructive",
+            title: 'Invalid File Type',
+            description: `Only .csv and .xlsx files are supported for data orchestration.`,
+            action: <FileWarning/>,
+        });
+        return;
+    }
     
     try {
       setDataFileName(file.name);
@@ -451,7 +452,6 @@ export function ExecutionProvider({ children }: { children: ReactNode }) {
       return;
     }
   
-    // Determine project name from the common base directory of the files
     const firstPath = files[0].webkitRelativePath;
     const projectName = firstPath.split('/')[0] || 'Uploaded Project';
     
@@ -460,14 +460,17 @@ export function ExecutionProvider({ children }: { children: ReactNode }) {
     setProjectFileSource('local');
   
     try {
-      const zip = new JSZip();
+      const formData = new FormData();
       let requirementsFile: File | null = null;
-  
-      // Add all files to the zip, and look for requirements.txt
+      let dataFile: File | null = null;
+
       for (const file of Array.from(files)) {
-        zip.file(file.webkitRelativePath, file);
+        formData.append('files', file, file.webkitRelativePath);
         if (file.name.toLowerCase() === 'requirements.txt') {
           requirementsFile = file;
+        }
+        if ((file.name.toLowerCase().endsWith('.csv') || file.name.toLowerCase().endsWith('.xlsx')) && !dataFileName) {
+            dataFile = file;
         }
       }
   
@@ -475,15 +478,12 @@ export function ExecutionProvider({ children }: { children: ReactNode }) {
         const content = await readFileAsText(requirementsFile);
         setRequirementsContent(content);
       } else {
-        toast({
-          title: 'Info',
-          description: `requirements.txt not found in the project.`,
-        });
+        toast({ title: 'Info', description: `requirements.txt not found in the project.` });
       }
-  
-      const zipBlob = await zip.generateAsync({type: "blob"});
-      const formData = new FormData();
-      formData.append('project', zipBlob, `${projectName}.zip`);
+
+      if (dataFile) {
+        await handleDataFileUpload(dataFile);
+      }
   
       const response = await fetch('/api/upload-project', {
         method: 'POST',
@@ -502,7 +502,6 @@ export function ExecutionProvider({ children }: { children: ReactNode }) {
         action: <FileCheck2 className="text-green-500" />,
       });
   
-      // After successfully uploading, fetch the new suite list
       await fetchSuites();
   
     } catch (error: any) {
@@ -513,7 +512,7 @@ export function ExecutionProvider({ children }: { children: ReactNode }) {
       });
       clearProjectFile();
     }
-  }, [clearProjectFile, toast, fetchSuites]);
+  }, [clearProjectFile, toast, fetchSuites, dataFileName, handleDataFileUpload]);
 
   const handleGitImport = useCallback((url: string) => {
     if (!url) {
@@ -524,12 +523,11 @@ export function ExecutionProvider({ children }: { children: ReactNode }) {
     const repoName = url.split('/').pop()?.replace('.git', '') || 'Git Project';
     
     clearProjectFile();
-
     setProjectFileName(repoName);
     setProjectFileSource('git');
 
     const dummyReqs = 'robotframework\nrequests\nselenium';
-    const dummyCsv = 'id,username,password\n1,testuser,password123';
+    const dummyCsv = 'id,priority,testcase\n1,high,User can login';
 
     setRequirementsContent(dummyReqs);
     setDataFileName('data.csv');
@@ -540,7 +538,8 @@ export function ExecutionProvider({ children }: { children: ReactNode }) {
         description: `Simulated import of "${repoName}".`,
         action: <GitBranch className="text-primary" />,
     });
-  }, [toast, parseAndSetDataFile, clearProjectFile]);
+    fetchSuites();
+  }, [toast, parseAndSetDataFile, clearProjectFile, fetchSuites]);
 
   const checkDependencies = useCallback(async () => {
     if (!requirementsContent) {
@@ -639,5 +638,3 @@ export function useExecutionContext() {
   }
   return context;
 }
-
-    

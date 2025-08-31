@@ -45,7 +45,7 @@ export function DataFileEditor() {
 
   const validateData = useCallback((currentHeaders: string[], currentData: TableData) => {
     const newErrors: ValidationError[] = [];
-    const lowerCaseHeaders = currentHeaders.map(h => h.toLowerCase());
+    const lowerCaseHeaders = currentHeaders.map(h => String(h).toLowerCase());
     const idIndex = lowerCaseHeaders.indexOf('id');
     const priorityIndex = lowerCaseHeaders.indexOf('priority');
 
@@ -72,6 +72,13 @@ export function DataFileEditor() {
 
     setValidationErrors(newErrors);
   }, []);
+  
+  useEffect(() => {
+    if (editedHeaders.length > 0 || editedData.length > 0) {
+      validateData(editedHeaders, editedData);
+    }
+  }, [editedHeaders, editedData, validateData]);
+
 
   const updateStateAndValidate = (newHeaders: string[], newData: TableData) => {
     setEditedHeaders(newHeaders);
@@ -156,7 +163,7 @@ export function DataFileEditor() {
     if (nonEmptyRows.length > 0) {
         for (let i = 0; i < editedHeaders.length; i++) {
             const isColumnEmpty = nonEmptyRows.every(row => !row[i] || String(row[i]).trim() === '');
-            const isHeaderEmpty = !editedHeaders[i] || editedHeaders[i].trim() === '';
+            const isHeaderEmpty = !editedHeaders[i] || String(editedHeaders[i]).trim() === '';
             if (isColumnEmpty && isHeaderEmpty) {
                 emptyColIndexes.add(i);
             }

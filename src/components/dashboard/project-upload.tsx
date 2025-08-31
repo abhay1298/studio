@@ -54,15 +54,7 @@ export function ProjectUpload({
     e: React.ChangeEvent<HTMLInputElement>
   ) => {
     const file = e.target.files?.[0] || null;
-    const allowedDataTypes = [
-        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-        'text/csv',
-    ];
-     if (file && (allowedDataTypes.includes(file.type) || file.name.endsWith('.csv') || file.name.endsWith('.xlsx'))) {
-        onDataFileChange(file);
-    } else {
-        onDataFileChange(null);
-    }
+    onDataFileChange(file);
     if (e.target) {
       e.target.value = "";
     }
@@ -113,7 +105,7 @@ export function ProjectUpload({
               </TabsList>
               <TabsContent value="folder" className="pt-4">
                 <div className="grid gap-2">
-                    <Label htmlFor="project-folder">Robot Framework Project Folder</Label>
+                    <Label htmlFor="project-folder-input">Robot Framework Project Folder</Label>
                      <div className="flex items-center gap-2">
                         <Label htmlFor="project-folder-input" className={cn(
                           "flex items-center gap-2 cursor-pointer",
@@ -128,6 +120,7 @@ export function ProjectUpload({
                             className="hidden"
                             onChange={handleProjectFolderChange}
                             webkitdirectory="true"
+                            directory=""
                         />
                     </div>
                 </div>

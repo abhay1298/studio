@@ -116,21 +116,25 @@ export default function ReportsPage() {
     const reportToDelete = reports.find(r => r.id === runId);
     if (!reportToDelete) return;
 
-    // Optimistically update the UI
     const originalReports = [...reports];
     setReports(reports.filter(r => r.id !== runId));
 
     try {
-        // Delete from localStorage
         const history = localStorage.getItem('robotMaestroRuns');
         if (history) {
-            const runs = JSON.parse(history);
-            // Match on ID, falling back to a unique composite key for older records without an ID
-            const updatedRuns = runs.filter((run: any) => (run.id || `RUN-${new Date(run.date).getTime()}`) !== runId);
+            let runs = [];
+            try {
+                runs = JSON.parse(history);
+            } catch (e) {
+                console.error("Could not parse localStorage before deleting run.", e);
+                throw new Error("Local storage is corrupt.");
+            }
+            // Match on ID
+            const updatedRuns = runs.filter((run: any) => run.id !== runId);
             localStorage.setItem('robotMaestroRuns', JSON.stringify(updatedRuns));
+            window.dispatchEvent(new Event('runsUpdated'));
         }
 
-        // Delete files from backend
         if (reportToDelete.reportFile) {
             await fetch(`/api/delete-report/${reportToDelete.reportFile}`, { method: 'DELETE' });
         }
@@ -145,7 +149,6 @@ export default function ReportsPage() {
         
     } catch (e) {
         console.error("Failed to delete run:", e);
-        // Revert UI if deletion fails
         setReports(originalReports);
         toast({
             variant: 'destructive',
