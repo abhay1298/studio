@@ -230,6 +230,7 @@ def run_robot_tests():
         runType = data.get('runType')
         config = data.get('config', {})
 
+        # This will be the final path passed to the robot command
         tests_directory_to_run = TESTS_DIRECTORY
 
         # --- Command Construction (Real) ---
@@ -248,10 +249,14 @@ def run_robot_tests():
         elif runType == 'By Suite' and config.get('suite'):
             # When running by suite, we need to construct the full path to the suite file
             suite_path = os.path.join(TESTS_DIRECTORY, config['suite'].replace('/', os.sep))
-            tests_directory_to_run = suite_path # We run this specific file
+            if os.path.isfile(suite_path):
+                tests_directory_to_run = suite_path # We run this specific file
+            else:
+                 return jsonify({"status": "error", "message": f"Suite file not found: {suite_path}"}), 404
         elif runType == 'By Test Case' and config.get('testcase'):
             command.extend(['-t', config['testcase']])
 
+        # The last argument to the command is the path to the tests to run
         command.append(tests_directory_to_run)
 
         state.logs.append("==============================================================================")
@@ -347,7 +352,5 @@ def delete_report(filename):
 
 if __name__ == '__main__':
     app.run(host='127.0.0.1', port=5001, debug=True)
-
-    
 
     
