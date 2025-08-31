@@ -3,7 +3,7 @@
 
 import { createContext, useContext, useState, useCallback, ReactNode, useEffect, Dispatch, SetStateAction } from 'react';
 import { useToast } from "@/hooks/use-toast";
-import { CheckCircle2, FileCheck2, XCircle } from 'lucide-react';
+import { CheckCircle2, FileCheck2, GitBranch, XCircle } from 'lucide-react';
 import Papa from 'papaparse';
 import * as XLSX from 'xlsx';
 import type { TestSuite } from '@/components/dashboard/project-explorer';
@@ -48,6 +48,7 @@ interface ExecutionContextType {
   clearLogs: () => void;
   handleProjectFileUpload: (files: FileList | null) => void;
   handleDataFileUpload: (file: File | null) => void;
+  handleGitImport: (url: string) => void;
   clearProjectFile: () => void;
   clearDataFile: () => void;
   checkDependencies: () => void;
@@ -122,17 +123,7 @@ export function ExecutionProvider({ children }: { children: ReactNode }) {
 
   const { toast } = useToast();
   
-  useEffect(() => {
-    if (hasHydrated) {
-        sessionStorage.setItem('projectFileName', JSON.stringify(projectFileName));
-        sessionStorage.setItem('dataFileName', JSON.stringify(dataFileName));
-        sessionStorage.setItem('requirementsContent', JSON.stringify(requirementsContent));
-        sessionStorage.setItem('editedData', JSON.stringify(editedData));
-        sessionStorage.setItem('editedHeaders', JSON.stringify(editedHeaders));
-        sessionStorage.setItem('dependencyCheckResult', JSON.stringify(dependencyCheckResult));
-    }
-  }, [projectFileName, dataFileName, requirementsContent, editedData, editedHeaders, dependencyCheckResult, hasHydrated]);
-  
+  // This effect runs once on the client to safely hydrate state from sessionStorage.
   useEffect(() => {
     setProjectFileName(getInitialState('projectFileName', null));
     setDataFileName(getInitialState('dataFileName', null));
@@ -143,6 +134,23 @@ export function ExecutionProvider({ children }: { children: ReactNode }) {
     setHasHydrated(true);
   }, []);
 
+  // This effect syncs state changes back to sessionStorage after hydration.
+  useEffect(() => {
+    if (hasHydrated) {
+        try {
+            sessionStorage.setItem('projectFileName', JSON.stringify(projectFileName));
+            sessionStorage.setItem('dataFileName', JSON.stringify(dataFileName));
+            sessionStorage.setItem('requirementsContent', JSON.stringify(requirementsContent));
+            sessionStorage.setItem('editedData', JSON.stringify(editedData));
+            sessionStorage.setItem('editedHeaders', JSON.stringify(editedHeaders));
+            sessionStorage.setItem('dependencyCheckResult', JSON.stringify(dependencyCheckResult));
+        } catch (error) {
+            console.warn(`Error writing to sessionStorage:`, error);
+        }
+    }
+  }, [projectFileName, dataFileName, requirementsContent, editedData, editedHeaders, dependencyCheckResult, hasHydrated]);
+  
+  // This effect ensures data consistency when the project is changed or cleared.
   useEffect(() => {
     if (projectFileName === null) {
       setRequirementsContent(null);
@@ -356,11 +364,11 @@ export function ExecutionProvider({ children }: { children: ReactNode }) {
     }
   }, [addLog, toast]);
 
-  const parseAndSetDataFile = useCallback(async (fileContent: ArrayBuffer, dataFileName: string) => {
+  const parseAndSetDataFile = useCallback(async (fileContent: ArrayBuffer | string, fileName: string) => {
     try {
-      if (dataFileName.endsWith('.csv')) {
-        const text = new TextDecoder().decode(fileContent);
-        Papa.parse(text, {
+      if (fileName.endsWith('.csv')) {
+        const textContent = typeof fileContent === 'string' ? fileContent : new TextDecoder().decode(fileContent);
+        Papa.parse(textContent, {
           header: true,
           skipEmptyLines: true,
           complete: (result) => {
@@ -370,7 +378,8 @@ export function ExecutionProvider({ children }: { children: ReactNode }) {
             setEditedData(parsedData);
           }
         });
-      } else if (dataFileName.endsWith('.xlsx')) {
+      } else if (fileName.endsWith('.xlsx')) {
+        if (typeof fileContent === 'string') throw new Error("XLSX parsing requires ArrayBuffer");
         const wb = XLSX.read(fileContent, { type: 'array' });
         const wsname = wb.SheetNames[0];
         const ws = wb.Sheets[wsname];
@@ -425,15 +434,12 @@ export function ExecutionProvider({ children }: { children: ReactNode }) {
 
   const handleProjectFileUpload = useCallback(async (files: FileList | null) => {
     if (!files || files.length === 0) {
-      clearProjectFile();
       return;
     }
 
     const fileArray = Array.from(files);
-    
-    // Set project name from the folder name
     const firstPath = files[0].webkitRelativePath;
-    const projectName = firstPath.split('/')[0];
+    const projectName = firstPath.split('/')[0] || 'Uploaded Project';
     setProjectFileName(projectName);
 
     setRequirementsContent(null);
@@ -445,26 +451,16 @@ export function ExecutionProvider({ children }: { children: ReactNode }) {
 
     try {
         let foundReqs = false;
-        let foundData = false;
-
-        const filePromises: Promise<void>[] = [];
+        const dataFilePromises: Promise<void>[] = [];
 
         for (const file of fileArray) {
-            const isReqs = file.name.toLowerCase() === 'requirements.txt';
-            const isData = (file.name.toLowerCase().endsWith('.csv') || file.name.toLowerCase().endsWith('.xlsx'));
+            const path = file.webkitRelativePath.toLowerCase();
 
-            if (isReqs) {
+            if (path.endsWith('requirements.txt')) {
                 foundReqs = true;
-                filePromises.push(
-                    readFileAsText(file).then(content => {
-                        setRequirementsContent(content);
-                    })
-                );
-            }
-
-            if (isData && !dataFileName) {
-                foundData = true;
-                filePromises.push(
+                await readFileAsText(file).then(content => setRequirementsContent(content));
+            } else if (!dataFileName && (path.endsWith('.csv') || path.endsWith('.xlsx'))) {
+                 dataFilePromises.push(
                     readFileAsArrayBuffer(file).then(buffer => {
                         setDataFileName(file.name);
                         parseAndSetDataFile(buffer, file.name);
@@ -472,8 +468,8 @@ export function ExecutionProvider({ children }: { children: ReactNode }) {
                 );
             }
         }
-
-        await Promise.all(filePromises);
+        
+        await Promise.all(dataFilePromises);
 
         if (!foundReqs) {
             toast({
@@ -495,7 +491,31 @@ export function ExecutionProvider({ children }: { children: ReactNode }) {
             description: 'Could not read the selected folder. Please try again.',
         });
     }
-  }, [clearProjectFile, parseAndSetDataFile, toast, dataFileName]);
+  }, [dataFileName, parseAndSetDataFile, toast]);
+
+  const handleGitImport = useCallback((url: string) => {
+    if (!url) {
+        toast({ variant: 'destructive', title: 'Invalid URL', description: 'Please enter a valid Git repository URL.'});
+        return;
+    }
+
+    const repoName = url.split('/').pop()?.replace('.git', '') || 'Git Project';
+    setProjectFileName(repoName);
+
+    // Simulate finding files
+    const dummyReqs = 'robotframework\nrequests\nselenium';
+    const dummyCsv = 'id,username,password\n1,testuser,password123';
+
+    setRequirementsContent(dummyReqs);
+    setDataFileName('data.csv');
+    parseAndSetDataFile(dummyCsv, 'data.csv');
+
+    toast({
+        title: 'Project Imported',
+        description: `Simulated import of "${repoName}".`,
+        action: <GitBranch className="text-primary" />,
+    });
+  }, [toast, parseAndSetDataFile]);
 
   const checkDependencies = useCallback(async () => {
     if (!requirementsContent) {
@@ -571,6 +591,7 @@ export function ExecutionProvider({ children }: { children: ReactNode }) {
     clearLogs,
     handleProjectFileUpload,
     handleDataFileUpload,
+    handleGitImport,
     clearProjectFile,
     clearDataFile,
     checkDependencies,

@@ -14,10 +14,11 @@ import {
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Button, buttonVariants } from '@/components/ui/button';
-import { UploadCloud, Pencil, FolderUp, FolderArchive, FileSpreadsheet } from 'lucide-react';
+import { UploadCloud, Pencil, FolderUp, FileSpreadsheet, GitBranch } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useExecutionContext } from '@/contexts/execution-context';
 import { Skeleton } from '../ui/skeleton';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '../ui/tabs';
 
 type ProjectUploadProps = {
     projectFileName: string | null;
@@ -37,7 +38,8 @@ export function ProjectUpload({
     onClearDataFile,
 }: ProjectUploadProps) {
   const router = useRouter();
-  const { hasHydrated } = useExecutionContext();
+  const { hasHydrated, handleGitImport } = useExecutionContext();
+  const [gitUrl, setGitUrl] = React.useState('');
 
   const handleProjectFolderChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
@@ -68,6 +70,10 @@ export function ProjectUpload({
     router.push('/dashboard/data-editor');
   };
   
+  const handleGitImportClick = () => {
+    handleGitImport(gitUrl);
+  };
+
   const renderLoadingSkeleton = () => (
     <CardContent className="pt-6">
       <div className="space-y-4">
@@ -83,7 +89,7 @@ export function ProjectUpload({
         <CardHeader>
           <CardTitle className="font-headline">Load Project</CardTitle>
           <CardDescription>
-            Upload your unzipped Robot Framework project folder.
+            Choose a local project folder or import from a Git repository.
           </CardDescription>
         </CardHeader>
         
@@ -91,34 +97,55 @@ export function ProjectUpload({
           renderLoadingSkeleton()
         ) : !projectFileName ? (
           <CardContent className="pt-6">
-            <div className="grid gap-2">
-                <Label htmlFor="project-folder">Robot Framework Project Folder</Label>
-                 <div className="flex items-center gap-2">
-                    <Label htmlFor="project-folder-input" className={cn(
-                      "flex items-center gap-2 cursor-pointer",
-                      buttonVariants({ variant: 'outline' })
-                    )}>
-                      <FolderUp className="h-5 w-5" />
-                      <span className="font-bold">Choose Folder</span>
-                    </Label>
-                    <Input
-                        id="project-folder-input"
-                        type="file"
-                        className="hidden"
-                        onChange={handleProjectFolderChange}
-                        // These attributes enable folder selection
-                        webkitdirectory="true"
-                        directory="true"
-                    />
+            <Tabs defaultValue="folder">
+              <TabsList className="grid w-full grid-cols-2">
+                <TabsTrigger value="folder"><FolderUp className="mr-2 h-4 w-4"/>Local Folder</TabsTrigger>
+                <TabsTrigger value="git"><GitBranch className="mr-2 h-4 w-4"/>Git Repository</TabsTrigger>
+              </TabsList>
+              <TabsContent value="folder" className="pt-4">
+                <div className="grid gap-2">
+                    <Label htmlFor="project-folder">Robot Framework Project Folder</Label>
+                     <div className="flex items-center gap-2">
+                        <Label htmlFor="project-folder-input" className={cn(
+                          "flex items-center gap-2 cursor-pointer",
+                          buttonVariants({ variant: 'outline' })
+                        )}>
+                          <FolderUp className="h-5 w-5" />
+                          <span className="font-bold">Choose Folder</span>
+                        </Label>
+                        <Input
+                            id="project-folder-input"
+                            type="file"
+                            className="hidden"
+                            onChange={handleProjectFolderChange}
+                            webkitdirectory="true"
+                            directory="true"
+                        />
+                    </div>
                 </div>
-            </div>
+              </TabsContent>
+              <TabsContent value="git" className="pt-4">
+                 <div className="grid gap-2">
+                    <Label htmlFor="git-url">Git Repository URL</Label>
+                    <div className="flex items-center gap-2">
+                        <Input 
+                            id="git-url" 
+                            placeholder="https://github.com/user/repo.git"
+                            value={gitUrl}
+                            onChange={(e) => setGitUrl(e.target.value)}
+                        />
+                        <Button onClick={handleGitImportClick} disabled={!gitUrl}>Import</Button>
+                    </div>
+                 </div>
+              </TabsContent>
+            </Tabs>
           </CardContent>
         ) : (
           <CardContent className="pt-6">
               <div className="bg-muted/50 rounded-lg p-4">
                   <div className="flex items-center justify-between">
                       <div className="flex items-center gap-3">
-                          <FolderArchive className="h-6 w-6 text-primary"/>
+                          <GitBranch className="h-6 w-6 text-primary"/>
                           <div className="flex flex-col">
                               <span className="font-semibold">Active Project</span>
                               <span className="text-sm text-muted-foreground truncate max-w-xs">{projectFileName}</span>
@@ -135,7 +162,7 @@ export function ProjectUpload({
         <CardHeader>
           <CardTitle className="font-headline">Orchestrator Data</CardTitle>
           <CardDescription>
-            Upload and manage the Excel or CSV file for orchestrator runs. This can also be detected from your project folder.
+            Upload and manage the Excel or CSV file for orchestrator runs.
           </CardDescription>
         </CardHeader>
         <CardContent className="pt-6">
