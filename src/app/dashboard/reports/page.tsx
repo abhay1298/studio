@@ -39,6 +39,8 @@ type Report = {
   videoFile: string | null;
 };
 
+const EXECUTION_BACKEND_URL = process.env.NEXT_PUBLIC_EXECUTION_BACKEND_URL || 'http://localhost:5001';
+
 export default function ReportsPage() {
   const { toast } = useToast();
   const [reports, setReports] = useState<Report[]>([]);
@@ -94,7 +96,8 @@ export default function ReportsPage() {
 
   const handleViewFile = (file: string | null) => {
     if (file) {
-      window.open(`/api/get-report/${file}`, '_blank');
+      // Open the backend URL directly to avoid the API proxy showing an error page
+      window.open(`${EXECUTION_BACKEND_URL}/reports/${file}`, '_blank');
     } else {
       toast({
         variant: 'destructive',
@@ -301,3 +304,5 @@ export default function ReportsPage() {
     </div>
   );
 }
+
+    
