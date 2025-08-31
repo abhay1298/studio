@@ -369,24 +369,25 @@ export function ExecutionProvider({ children }: { children: ReactNode }) {
     try {
         const response = await fetch('/api/stop-tests', { method: 'POST' });
         if (!response.ok) {
-            throw new Error('Server responded with an error.');
+            const errorData = await response.json();
+            throw new Error(errorData.message || 'Server responded with an error.');
         }
         const result = await response.json();
         addLog(result.message);
         // The polling interval will handle the status change to "stopped"
-        // setStatus('stopped'); // No need to set it here
         toast({
             title: "Stop Signal Sent",
             description: "The test run will be terminated.",
         });
 
-    } catch (e) {
-        addLog('Failed to send stop signal. It may have already completed.');
-        setStatus('failed');
+    } catch (e: any) {
+        addLog(`Failed to send stop signal: ${e.message}`);
+        // We don't set status to failed, as the run might just have finished.
+        // Polling will determine the final state.
         toast({
             variant: "destructive",
             title: "Stop Failed",
-            description: "Could not stop the test run. Check the backend server.",
+            description: "Could not stop the test run. It may have already completed.",
         });
     }
   }, [addLog, toast]);
