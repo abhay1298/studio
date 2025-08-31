@@ -202,5 +202,3 @@ export function ExecutionPanel() {
     </Card>
   );
 }
-
-    

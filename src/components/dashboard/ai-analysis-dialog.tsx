@@ -1,7 +1,7 @@
 
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
   Dialog,
   DialogContent,
@@ -42,14 +42,19 @@ export function AiAnalysisDialog({ logs }: AiAnalysisDialogProps) {
     }
   };
 
-  const handleOpenChange = (open: boolean) => {
-    setIsOpen(open);
-    if (open) {
-      // Reset state when opening
+  useEffect(() => {
+    if (isOpen) {
+      // Reset state when opening and auto-start analysis
       setAnalysis(null);
       setError(null);
       setIsLoading(false);
+      handleAnalysis();
     }
+  }, [isOpen]);
+
+
+  const handleOpenChange = (open: boolean) => {
+    setIsOpen(open);
   };
 
   return (
@@ -71,16 +76,6 @@ export function AiAnalysisDialog({ logs }: AiAnalysisDialogProps) {
             a resolution.
           </DialogDescription>
         </DialogHeader>
-
-        {!analysis && !isLoading && !error && (
-            <div className="py-8 text-center">
-                <p className="text-muted-foreground mb-4">Ready to analyze the failed execution logs.</p>
-                <Button onClick={handleAnalysis}>
-                    <Sparkles className="mr-2 h-4 w-4" />
-                    Start Analysis
-                </Button>
-            </div>
-        )}
 
         {isLoading && (
           <div className="flex flex-col items-center justify-center gap-4 py-8">

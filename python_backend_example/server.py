@@ -190,11 +190,18 @@ def run_robot_in_thread(command, output_dir, timestamp):
             elif state.status == 'failed' and state.pass_count == 0 and state.fail_count == 0:
                 state.fail_count = random.randint(1, 3)
                 state.pass_count = random.randint(0, 2)
-            
+        else: # Handle the 'stopped' case
+            state.logs.append(f"\nExecution was manually stopped.")
+            state.pass_count = 0
+            state.fail_count = 0
+            if os.path.exists(output_dir):
+                shutil.rmtree(output_dir)
+
     except Exception as e:
         print(f"Error in execution thread: {e}")
         state.logs.append(f"CRITICAL ERROR in execution thread: {e}")
-        state.status = "failed"
+        if state.status == "running":
+            state.status = "failed"
     finally:
         state.process = None
 
@@ -335,9 +342,3 @@ def delete_report(filename):
 
 if __name__ == '__main__':
     app.run(host='127.0.0.1', port=5001, debug=True)
-
-    
-
-    
-
-    

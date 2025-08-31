@@ -197,6 +197,20 @@ export function DataFileEditor() {
     );
   }
 
+  if (!dataFileName.toLowerCase().endsWith('.csv') && !dataFileName.toLowerCase().endsWith('.xlsx')) {
+     return (
+        <Alert variant="destructive">
+            <TriangleAlert className="h-4 w-4" />
+            <AlertTitle>Invalid File Type for Editor</AlertTitle>
+            <AlertDescription>
+                The Data Editor only supports editing <strong>.csv</strong> and <strong>.xlsx</strong> files. The currently loaded data file is <strong>{dataFileName}</strong>.
+                <br/>
+                Please upload a compatible file on the <Link href="/dashboard/project-management" className="font-medium text-primary hover:underline">Project Management</Link> page.
+            </AlertDescription>
+        </Alert>
+    );
+  }
+
   return (
     <div className="space-y-4">
         {validationErrors.length > 0 && (
@@ -315,5 +329,3 @@ export function DataFileEditor() {
     </div>
   );
 }
-
-    
