@@ -10,6 +10,9 @@ export async function POST(req: NextRequest) {
     console.log(`Forwarding execution request to: ${EXECUTION_BACKEND_URL}`);
     console.log('Request body:', body);
 
+    // Note: The timeout for this fetch request might need to be adjusted
+    // if the backend takes a long time to start the process.
+    // However, since the new backend is non-blocking, this should be quick.
     const backendResponse = await fetch(EXECUTION_BACKEND_URL, {
         method: 'POST',
         headers: {

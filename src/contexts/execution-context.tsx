@@ -49,9 +49,9 @@ interface ExecutionContextType {
   handleStop: () => Promise<void>;
   clearLogs: () => void;
   handleProjectFileUpload: (files: FileList | null) => void;
-  handleDataFileUpload: (file: File | null) => void;
   handleGitImport: (url: string) => void;
   clearProjectFile: () => void;
+  handleDataFileUpload: (file: File | null) => void;
   clearDataFile: () => void;
   checkDependencies: () => void;
   installDependencies: () => void;
@@ -78,21 +78,21 @@ const getInitialState = <T extends unknown>(key: string, defaultValue: T): T => 
     }
 };
 
-const readFileAsArrayBuffer = (file: File): Promise<ArrayBuffer> => {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(reader.result as ArrayBuffer);
-    reader.onerror = () => reject(reader.error);
-    reader.readAsArrayBuffer(file);
-  });
-};
-
 const readFileAsText = (file: File): Promise<string> => {
     return new Promise((resolve, reject) => {
         const reader = new FileReader();
         reader.onload = () => resolve(reader.result as string);
         reader.onerror = () => reject(reader.error);
         reader.readAsText(file);
+    });
+};
+
+const readFileAsArrayBuffer = (file: File): Promise<ArrayBuffer> => {
+    return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result as ArrayBuffer);
+        reader.onerror = reject;
+        reader.readAsArrayBuffer(file);
     });
 };
 
@@ -158,13 +158,15 @@ export function ExecutionProvider({ children }: { children: ReactNode }) {
     setProjectFileSource(null);
     setRequirementsContent(null);
     setDependencyCheckResult(null);
-    setDataFileName(null);
-    setEditedData([]);
-    setEditedHeaders([]);
+    clearDataFile(); // Also clear data file when project is cleared
     toast({ title: 'Project Cleared' });
   }, [toast]);
   
   const fetchSuites = useCallback(async () => {
+    if (!projectFileName) {
+        setTestSuites([]);
+        return;
+    }
     setIsLoadingSuites(true);
     setSuiteLoadError(null);
     try {
@@ -184,7 +186,7 @@ export function ExecutionProvider({ children }: { children: ReactNode }) {
     } finally {
         setIsLoadingSuites(false);
     }
-  }, []);
+  }, [projectFileName]);
 
   useEffect(() => {
     fetchSuites();
@@ -253,88 +255,101 @@ export function ExecutionProvider({ children }: { children: ReactNode }) {
 
 
   const handleRun = useCallback(async (runType: string) => {
+    let pollingInterval: NodeJS.Timeout;
     setLogs([]);
     addLog(`Starting ${runType} execution...`);
     setStatus("running");
     setLastFailedLogs('');
     const startTime = Date.now();
-
+  
     try {
-      const response = await fetch('/api/run-tests', {
+      const runResponse = await fetch('/api/run-tests', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ runType, config: runConfig }),
       });
-
-      const endTime = Date.now();
-      const duration = ((endTime - startTime) / 1000).toFixed(2) + 's';
-      const suiteName = getSuiteNameForRun(runType);
-      
-      if (!response.ok) {
-          const result = await response.json();
-          const errorMessage = result.message || 'The execution server returned an error.';
-          addLog(`Execution failed: ${errorMessage}`);
-          setStatus("failed");
-          saveRunToHistory(suiteName, 'Failed', duration, 0, 1, null, null, null);
-          toast({
-              variant: "destructive",
-              title: "Execution Error",
-              description: errorMessage,
-          });
-          return;
+  
+      if (!runResponse.ok) {
+        const result = await runResponse.json();
+        throw new Error(result.message || 'The execution server failed to start the run.');
       }
-      
-      const result = await response.json();
-      addLog("Execution logs received from backend:");
-      setLogs(prev => [...prev, result.logs]);
-      setStatus(result.status === 'success' ? 'success' : 'failed');
-      saveRunToHistory(
-          suiteName, 
-          result.status === 'success' ? 'Success' : 'Failed', 
-          duration,
-          result.pass_count || 0,
-          result.fail_count || 0,
-          result.reportFile || null,
-          result.logFile || null,
-          result.videoFile || null
-      );
-
-      if (result.status === 'success') {
-          toast({
-          title: "Job Completed Successfully",
-          description: `Run finished in ${duration}.`,
-          action: <CheckCircle2 className="text-green-500" />,
-          });
-      } else if (result.status === 'failed') {
-          setLastFailedLogs(result.logs);
-          toast({
-          variant: "destructive",
-          title: "Execution Failed",
-          description: "Check logs for details.",
-          action: <XCircle />,
-          });
-      }
-
-    } catch (error) {
+  
+      addLog("Test execution started successfully on the backend.");
+  
+      // Start polling for status
+      pollingInterval = setInterval(async () => {
+        try {
+          const statusResponse = await fetch('/api/status');
+          const data = await statusResponse.json();
+  
+          if (data.logs) {
+            setLogs(data.logs);
+          }
+  
+          if (data.status !== 'running') {
+            clearInterval(pollingInterval);
+            const endTime = Date.now();
+            const duration = ((endTime - startTime) / 1000).toFixed(2) + 's';
+            const suiteName = getSuiteNameForRun(runType);
+            const finalStatus = data.status === 'success' ? 'success' : 'failed';
+            setStatus(finalStatus);
+  
+            saveRunToHistory(
+              suiteName,
+              finalStatus === 'success' ? 'Success' : 'Failed',
+              duration,
+              data.pass_count || 0,
+              data.fail_count || 0,
+              data.reportFile || null,
+              data.logFile || null,
+              data.videoFile || null
+            );
+  
+            if (finalStatus === 'success') {
+              toast({
+                title: "Job Completed Successfully",
+                description: `Run finished in ${duration}.`,
+                action: <CheckCircle2 className="text-green-500" />,
+              });
+            } else {
+              setLastFailedLogs(data.logs.join('\n'));
+              toast({
+                variant: "destructive",
+                title: "Execution Failed",
+                description: "Check logs for details.",
+                action: <XCircle />,
+              });
+            }
+          }
+        } catch (pollError) {
+          console.error('Polling error:', pollError);
+          clearInterval(pollingInterval);
+          setStatus('failed');
+          addLog("Error polling for status. Connection to backend might be lost.");
+          toast({ variant: 'destructive', title: 'Connection Error', description: 'Lost connection to the backend during execution.' });
+        }
+      }, 2000); // Poll every 2 seconds
+  
+    } catch (error: any) {
       const endTime = Date.now();
       const duration = ((endTime - startTime) / 1000).toFixed(2) + 's';
       const suiteName = getSuiteNameForRun(runType);
       
       let toastTitle = "Execution Error";
-      let toastDescription = "An unexpected error occurred. Please try again.";
-
+      let toastDescription = error.message || "An unexpected error occurred. Please try again.";
+  
       if (error instanceof TypeError && error.message.includes('fetch')) {
-          toastTitle = "Connection Error";
-          toastDescription = "Could not connect to the execution service. Please ensure the Python backend is running.";
+        toastTitle = "Connection Error";
+        toastDescription = "Could not connect to the execution service. Please ensure the Python backend is running.";
       }
       
       addLog(`Execution failed: ${toastDescription}`);
       setStatus("failed");
       saveRunToHistory(suiteName, 'Failed', duration, 0, 1, null, null, null);
       toast({
-          variant: "destructive",
-          title: toastTitle,
-          description: toastDescription,
+        variant: "destructive",
+        title: toastTitle,
+        description: toastDescription,
       });
     }
   }, [addLog, getSuiteNameForRun, runConfig, saveRunToHistory, toast]);
@@ -367,18 +382,17 @@ export function ExecutionProvider({ children }: { children: ReactNode }) {
 
   const parseAndSetDataFile = useCallback(async (fileContent: ArrayBuffer | string, fileName: string) => {
     try {
+      let data: any[][] = [];
+      let headers: string[] = [];
+
       if (fileName.endsWith('.csv')) {
         const textContent = typeof fileContent === 'string' ? fileContent : new TextDecoder().decode(fileContent);
-        Papa.parse(textContent, {
+        const result = Papa.parse(textContent, {
           header: true,
           skipEmptyLines: true,
-          complete: (result) => {
-            const parsedHeaders = result.meta.fields || [];
-            const parsedData = result.data.map((row: any) => parsedHeaders.map(h => row[h])) as TableData;
-            setEditedHeaders(parsedHeaders);
-            setEditedData(parsedData);
-          }
         });
+        headers = result.meta.fields || [];
+        data = result.data.map((row: any) => headers.map(h => row[h]));
       } else if (fileName.endsWith('.xlsx')) {
         if (typeof fileContent === 'string') throw new Error("XLSX parsing requires ArrayBuffer");
         const wb = XLSX.read(fileContent, { type: 'array' });
@@ -386,12 +400,13 @@ export function ExecutionProvider({ children }: { children: ReactNode }) {
         const ws = wb.Sheets[wsname];
         const jsonData: any[][] = XLSX.utils.sheet_to_json(ws, { header: 1 });
         if (jsonData.length > 0) {
-          const parsedHeaders = jsonData[0].map(String);
-          const parsedData = jsonData.slice(1);
-          setEditedHeaders(parsedHeaders);
-          setEditedData(parsedData);
+          headers = jsonData[0].map(String);
+          data = jsonData.slice(1);
         }
       }
+      setEditedHeaders(headers);
+      setEditedData(data);
+
     } catch (e) {
       console.error("Error parsing data file", e);
       toast({ variant: 'destructive', title: "Error reading data file" });
@@ -402,8 +417,7 @@ export function ExecutionProvider({ children }: { children: ReactNode }) {
     setDataFileName(null);
     setEditedData([]);
     setEditedHeaders([]);
-    toast({ title: 'Data File Cleared' });
-  }, [toast]);
+  }, []);
 
   const handleDataFileUpload = useCallback(async (file: File | null) => {
     if (!file) {
@@ -421,7 +435,6 @@ export function ExecutionProvider({ children }: { children: ReactNode }) {
         description: file.name,
         action: <FileCheck2 className="text-green-500" />,
       });
-      window.dispatchEvent(new CustomEvent('projectUpdated'));
     } catch (e) {
       const errorMessage = e instanceof Error ? e.message : "Unknown error";
       toast({ variant: 'destructive', title: "Could not read data file", description: errorMessage });
@@ -437,45 +450,32 @@ export function ExecutionProvider({ children }: { children: ReactNode }) {
     const fileArray = Array.from(files);
     const firstPath = fileArray[0].webkitRelativePath;
     const projectName = firstPath.split('/')[0] || 'Uploaded Project';
+    
+    // Clear previous project state
+    clearProjectFile();
     setProjectFileName(projectName);
     setProjectFileSource('local');
 
-    setRequirementsContent(null);
-    setDependencyCheckResult(null);
-    
-    if (!dataFileName) {
-        setDataFileName(null);
-        setEditedData([]);
-        setEditedHeaders([]);
-    }
-
     try {
         let foundReqs = false;
-        const filePromises: Promise<void>[] = [];
+        let dataFileFound: File | null = null;
+        
+        for (const file of fileArray) {
+            const path = file.webkitRelativePath.toLowerCase();
 
-        fileArray.forEach(file => {
-          const path = file.webkitRelativePath.toLowerCase();
-
-          const reqsPromise = async () => {
             if (path.endsWith('requirements.txt')) {
                 foundReqs = true;
                 const content = await readFileAsText(file);
                 setRequirementsContent(content);
             }
-          };
-
-          const dataFilePromise = async () => {
-             if (!dataFileName && (path.endsWith('.csv') || path.endsWith('.xlsx'))) {
-                setDataFileName(file.name);
-                const buffer = await readFileAsArrayBuffer(file);
-                await parseAndSetDataFile(buffer, file.name);
+            if (!dataFileFound && (path.endsWith('.csv') || path.endsWith('.xlsx'))) {
+                dataFileFound = file;
             }
-          };
-          filePromises.push(reqsPromise());
-          filePromises.push(dataFilePromise());
-        });
+        }
         
-        await Promise.all(filePromises);
+        if (dataFileFound) {
+            await handleDataFileUpload(dataFileFound);
+        }
 
         if (!foundReqs) {
           toast({
@@ -496,8 +496,9 @@ export function ExecutionProvider({ children }: { children: ReactNode }) {
             title: 'Error processing project folder',
             description: 'Could not read the selected folder. Please try again.',
         });
+        clearProjectFile();
     }
-  }, [dataFileName, parseAndSetDataFile, toast]);
+  }, [clearProjectFile, handleDataFileUpload, toast]);
 
   const handleGitImport = useCallback((url: string) => {
     if (!url) {
@@ -506,6 +507,10 @@ export function ExecutionProvider({ children }: { children: ReactNode }) {
     }
 
     const repoName = url.split('/').pop()?.replace('.git', '') || 'Git Project';
+    
+    // Clear previous project state
+    clearProjectFile();
+
     setProjectFileName(repoName);
     setProjectFileSource('git');
 
@@ -521,7 +526,7 @@ export function ExecutionProvider({ children }: { children: ReactNode }) {
         description: `Simulated import of "${repoName}".`,
         action: <GitBranch className="text-primary" />,
     });
-  }, [toast, parseAndSetDataFile]);
+  }, [toast, parseAndSetDataFile, clearProjectFile]);
 
   const checkDependencies = useCallback(async () => {
     if (!requirementsContent) {
@@ -572,14 +577,6 @@ export function ExecutionProvider({ children }: { children: ReactNode }) {
     }, 2000);
   }, [dependencyCheckResult, toast]);
 
-  useEffect(() => {
-    if (projectFileName) {
-      fetchSuites();
-    } else {
-      setTestSuites([]);
-    }
-  }, [projectFileName, fetchSuites]);
-
   
   const value = {
     status,
@@ -606,9 +603,9 @@ export function ExecutionProvider({ children }: { children: ReactNode }) {
     handleStop,
     clearLogs,
     handleProjectFileUpload,
-    handleDataFileUpload,
     handleGitImport,
     clearProjectFile,
+    handleDataFileUpload,
     clearDataFile,
     checkDependencies,
     installDependencies,

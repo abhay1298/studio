@@ -11,6 +11,8 @@ import datetime
 import shutil
 import zipfile
 import tempfile
+from threading import Thread
+from collections import deque
 
 app = Flask(__name__)
 CORS(app) # Enable CORS for all routes
@@ -38,8 +40,23 @@ if not TESTS_DIRECTORY:
 #    in a location accessible to this server.
 # 3. This server still simulates pass/fail counts for UI purposes.
 
-# Global variable to hold the running process
-robot_process = None
+# --- Global State ---
+class ExecutionState:
+    def __init__(self):
+        self.process = None
+        self.status = "idle"  # idle, running, success, failed, stopped
+        self.logs = deque(maxlen=1000) # Store up to 1000 log lines
+        self.pass_count = 0
+        self.fail_count = 0
+        self.report_file = None
+        self.log_file = None
+        self.video_file = None
+        self.return_code = None
+
+    def reset(self):
+        self.__init__()
+
+state = ExecutionState()
 REPORTS_DIR = 'reports_archive' # Directory to store archived reports
 
 if not os.path.exists(REPORTS_DIR):
@@ -99,20 +116,106 @@ def list_suites():
         return jsonify({"error": f"Failed to scan for suites: {str(e)}"}), 500
 
 
+def run_robot_in_thread(command, output_dir, timestamp):
+    """The target function for the execution thread."""
+    global state
+    try:
+        # Use CREATE_NEW_PROCESS_GROUP on Windows to allow sending Ctrl+C
+        # Use preexec_fn=os.setsid on Unix-like systems to create a new process group
+        creation_flags = subprocess.CREATE_NEW_PROCESS_GROUP if os.name == 'nt' else 0
+        preexec_fn = os.setsid if os.name != 'nt' else None
+
+        state.process = subprocess.Popen(
+            command,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT, # Redirect stderr to stdout
+            text=True,
+            encoding='utf-8',
+            errors='replace',
+            creationflags=creation_flags,
+            preexec_fn=preexec_fn
+        )
+
+        full_output = []
+        # Read stdout line by line in a non-blocking way
+        for line in iter(state.process.stdout.readline, ''):
+            clean_line = line.strip()
+            state.logs.append(clean_line)
+            full_output.append(clean_line)
+        
+        state.process.stdout.close()
+        state.return_code = state.process.wait()
+        
+        # --- Post Execution Processing ---
+        if state.status == "running": # Don't process if it was stopped
+            # Archive reports and video by searching recursively
+            try:
+                if os.path.exists(output_dir):
+                    for dirpath, _, filenames in os.walk(output_dir):
+                        for f in filenames:
+                            temp_file_path = os.path.join(dirpath, f)
+                            
+                            if f.lower() == 'report.html' and not state.report_file:
+                                state.report_file = f"report-{timestamp}.html"
+                                shutil.move(temp_file_path, os.path.join(REPORTS_DIR, state.report_file))
+                                state.logs.append(f"\nSuccessfully archived report to {state.report_file}")
+                            
+                            elif f.lower() == 'log.html' and not state.log_file:
+                                state.log_file = f"log-{timestamp}.html"
+                                shutil.move(temp_file_path, os.path.join(REPORTS_DIR, state.log_file))
+                                state.logs.append(f"Successfully archived log to {state.log_file}")
+
+                            elif f.lower().endswith(('.avi', '.mp4', '.webm')) and not state.video_file:
+                                video_ext = os.path.splitext(f)[1]
+                                state.video_file = f"video-{timestamp}{video_ext}"
+                                shutil.move(temp_file_path, os.path.join(REPORTS_DIR, state.video_file))
+                                state.logs.append(f"Successfully archived video to {state.video_file}")
+                
+                if os.path.exists(output_dir):
+                    shutil.rmtree(output_dir)
+
+            except Exception as e:
+                state.logs.append(f"\nError archiving reports or video: {e}")
+
+            state.status = 'success' if state.return_code == 0 else 'failed'
+            state.logs.append(f"\nExecution Result: {state.status.upper()} (Exit Code {state.return_code})")
+
+            output_text = "\n".join(full_output)
+            state.pass_count = output_text.count('| PASS |')
+            state.fail_count = output_text.count('| FAIL |')
+            
+            # Fallback if parsing fails
+            if state.status == 'success' and state.pass_count == 0 and state.fail_count == 0:
+                state.pass_count = random.randint(1, 5)
+            elif state.status == 'failed' and state.pass_count == 0 and state.fail_count == 0:
+                state.fail_count = random.randint(1, 3)
+                state.pass_count = random.randint(0, 2)
+            
+    except Exception as e:
+        print(f"Error in execution thread: {e}")
+        state.logs.append(f"CRITICAL ERROR in execution thread: {e}")
+        state.status = "failed"
+    finally:
+        state.process = None
+
+
 @app.route('/run', methods=['POST'])
 def run_robot_tests():
-    global robot_process
+    global state
     if not TESTS_DIRECTORY:
         return jsonify({"status": "error", "message": "Cannot run tests: `TESTS_DIRECTORY` is not configured in `server.py`."}), 400
 
-    if robot_process and robot_process.poll() is None:
+    if state.status == "running":
         return jsonify({"status": "error", "message": "Another execution is already in progress."}), 409
 
     try:
         data = request.get_json()
         if not data:
             return jsonify({"status": "error", "message": "No data provided"}), 400
-
+        
+        state.reset()
+        state.status = "running"
+        
         runType = data.get('runType')
         config = data.get('config', {})
         
@@ -121,7 +224,8 @@ def run_robot_tests():
         # --- Command Construction (Real) ---
         command = ['robot']
         timestamp = datetime.datetime.now().strftime('%Y%m%d-%H%M%S')
-        output_dir = os.path.join(os.getcwd(), 'temp_output') # Temporary output directory
+        # Temporary output directory for this specific run
+        output_dir = os.path.join(os.getcwd(), f'temp_output_{timestamp}') 
 
         command.extend(['--outputdir', output_dir])
 
@@ -141,129 +245,63 @@ def run_robot_tests():
         if tests_directory:
             command.append(tests_directory)
             
-        print(f"--- Preparing Real Execution ---")
-        print(f"Constructed Command: {' '.join(command)}")
-        
-        # --- Real Execution using subprocess ---
-        # This is now NON-BLOCKING
-        robot_process = subprocess.Popen(
-            command,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            text=True,
-            # Use CREATE_NEW_PROCESS_GROUP on Windows to allow sending Ctrl+C
-            # Use preexec_fn=os.setsid on Unix-like systems to create a new process group
-            creationflags=subprocess.CREATE_NEW_PROCESS_GROUP if os.name == 'nt' else 0,
-            preexec_fn=os.setsid if os.name != 'nt' else None
-        )
-        
-        stdout, stderr = robot_process.communicate()
-        returncode = robot_process.poll()
-        robot_process = None
+        state.logs.append("==============================================================================")
+        state.logs.append(f"Executing command: {' '.join(command)}")
+        state.logs.append("==============================================================================")
 
-        logs = []
-        logs.append("==============================================================================")
-        logs.append(f"Executing command: {' '.join(command)}")
-        logs.append("==============================================================================")
-        
-        if stdout:
-            logs.append("\n--- STDOUT ---\n")
-            logs.append(stdout)
-        if stderr:
-            logs.append("\n--- STDERR ---\n")
-            logs.append(stderr)
-            
-        report_file = None
-        log_file = None
-        video_file = None
+        # --- Start non-blocking execution in a separate thread ---
+        thread = Thread(target=run_robot_in_thread, args=(command, output_dir, timestamp))
+        thread.daemon = True
+        thread.start()
 
-        # Archive reports and video by searching recursively
-        try:
-            if os.path.exists(output_dir):
-                for dirpath, _, filenames in os.walk(output_dir):
-                    for f in filenames:
-                        temp_file_path = os.path.join(dirpath, f)
-                        
-                        if f.lower() == 'report.html' and not report_file:
-                            report_file = f"report-{timestamp}.html"
-                            shutil.move(temp_file_path, os.path.join(REPORTS_DIR, report_file))
-                            logs.append(f"\nSuccessfully archived report to {report_file}")
-                        
-                        elif f.lower() == 'log.html' and not log_file:
-                            log_file = f"log-{timestamp}.html"
-                            shutil.move(temp_file_path, os.path.join(REPORTS_DIR, log_file))
-                            logs.append(f"Successfully archived log to {log_file}")
-
-                        elif f.lower().endswith('.avi') and not video_file:
-                            video_file = f"video-{timestamp}.avi"
-                            shutil.move(temp_file_path, os.path.join(REPORTS_DIR, video_file))
-                            logs.append(f"Successfully archived video to {video_file}")
-            
-            # Clean up other output files if necessary
-            if os.path.exists(output_dir):
-                shutil.rmtree(output_dir)
-
-        except Exception as e:
-            logs.append(f"\nError archiving reports or video: {e}")
-
-        status = 'success' if returncode == 0 else 'failed'
-        logs.append(f"\nExecution Result: {status.upper()} (Exit Code {returncode})")
-
-        output_text = stdout + stderr
-        pass_count = output_text.count('| PASS |')
-        fail_count = output_text.count('| FAIL |')
-        
-        if status == 'success' and pass_count == 0 and fail_count == 0:
-            pass_count = random.randint(1, 5)
-        elif status == 'failed' and pass_count == 0 and fail_count == 0:
-            fail_count = random.randint(1, 3)
-            pass_count = random.randint(0, 2)
-
-
-        return jsonify({
-            "status": status,
-            "logs": "\n".join(logs),
-            "pass_count": pass_count,
-            "fail_count": fail_count,
-            "reportFile": report_file,
-            "logFile": log_file,
-            "videoFile": video_file
-        })
+        return jsonify({"status": "running", "message": "Execution started."})
 
     except Exception as e:
         print(f"A critical error occurred in the Flask server: {e}")
-        robot_process = None
+        state.reset() # Reset state on error
         return jsonify({"status": "error", "message": str(e)}), 500
+
+
+@app.route('/status', methods=['GET'])
+def get_status():
+    """Endpoint for the frontend to poll for execution status and logs."""
+    global state
+    return jsonify({
+        "status": state.status,
+        "logs": list(state.logs),
+        "pass_count": state.pass_count,
+        "fail_count": state.fail_count,
+        "reportFile": state.report_file,
+        "logFile": state.log_file,
+        "videoFile": state.video_file
+    })
+
 
 @app.route('/stop', methods=['POST'])
 def stop_robot_tests():
-    global robot_process
-    if robot_process and robot_process.poll() is None:
+    global state
+    if state.process and state.process.poll() is None:
         try:
-            print(f"--- Terminating Process Group PID: {robot_process.pid} ---")
+            print(f"--- Terminating Process Group PID: {state.process.pid} ---")
+            state.status = "stopped" # Set status immediately
             if os.name == 'nt':
                  # Sends a Ctrl+C signal to the process group on Windows
-                 robot_process.send_signal(signal.CTRL_C_EVENT)
+                 state.process.send_signal(signal.CTRL_C_EVENT)
             else:
                  # Sends SIGTERM to the entire process group on Unix-like systems
-                 os.killpg(os.getpgid(robot_process.pid), signal.SIGTERM)
+                 os.killpg(os.getpgid(state.process.pid), signal.SIGTERM)
             
-            # Wait a bit for the process to terminate gracefully
-            robot_process.wait(timeout=5)
-            robot_process = None
-            print("--- Process terminated successfully ---")
-            return jsonify({"status": "success", "message": "Execution stopped successfully."}), 200
-        except subprocess.TimeoutExpired:
-            print("--- Process did not terminate in time, killing forcefully ---")
-            robot_process.kill()
-            robot_process = None
-            return jsonify({"status": "success", "message": "Execution stopped forcefully."}), 200
+            # Don't wait here, let the thread handle the process cleanup
+            state.logs.append("--- Stop signal sent to process ---")
+            return jsonify({"status": "success", "message": "Stop signal sent."}), 200
         except Exception as e:
             print(f"Error stopping process: {e}")
-            robot_process = None
+            state.logs.append(f"--- Error stopping process: {e} ---")
+            state.status = "failed"
             return jsonify({"status": "error", "message": f"Failed to stop process: {e}"}), 500
     else:
         return jsonify({"status": "info", "message": "No execution running to stop."}), 200
+
 
 @app.route('/reports', methods=['GET'])
 def list_reports():
@@ -303,4 +341,3 @@ if __name__ == '__main__':
     
 
     
-
