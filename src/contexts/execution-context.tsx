@@ -411,15 +411,24 @@ export function ExecutionProvider({ children }: { children: ReactNode }) {
       const buffer = await readFileAsArrayBuffer(file);
       const zip = await JSZip.loadAsync(buffer);
       
-      const reqFileKey = Object.keys(zip.files).find(
-        (relativePath) => relativePath.toLowerCase().endsWith('requirements.txt') && !zip.files[relativePath].dir
-      );
+      let reqFileFound = false;
+      const reqFilePromises: Promise<void>[] = [];
 
-      if (reqFileKey) {
-        const reqFile = zip.files[reqFileKey];
-        const content = await reqFile.async('string');
-        setRequirementsContent(content);
-      } else {
+      zip.forEach((relativePath, zipEntry) => {
+          const fileName = zipEntry.name.toLowerCase();
+          // Check for requirements.txt in any directory
+          if (fileName.endsWith('requirements.txt') && !zipEntry.dir) {
+              reqFileFound = true;
+              const promise = zipEntry.async('string').then(content => {
+                  setRequirementsContent(content);
+              });
+              reqFilePromises.push(promise);
+          }
+      });
+
+      await Promise.all(reqFilePromises);
+
+      if (!reqFileFound) {
         setRequirementsContent(null);
         toast({
             title: 'Info',
