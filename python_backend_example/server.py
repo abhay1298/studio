@@ -18,6 +18,9 @@ app = Flask(__name__)
 CORS(app) # Enable CORS for all routes
 
 # --- Configuration ---
+# Get the absolute path of the directory where this script is located.
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+
 # IMPORTANT: You MUST change this path to the ABSOLUTE path of your Robot Framework project folder.
 # This is the directory that contains your .robot files.
 # Example for Windows: TESTS_DIRECTORY = 'C:/Users/YourUser/Documents/RobotMaestro/tests'
@@ -57,7 +60,8 @@ class ExecutionState:
         self.__init__()
 
 state = ExecutionState()
-REPORTS_DIR = 'reports_archive' # Directory to store archived reports
+# Use an absolute path for the reports directory to ensure it's always found.
+REPORTS_DIR = os.path.join(SCRIPT_DIR, 'reports_archive')
 
 if not os.path.exists(REPORTS_DIR):
     os.makedirs(REPORTS_DIR)
@@ -165,15 +169,12 @@ def run_robot_in_thread(command, output_dir, timestamp):
                                 shutil.move(temp_file_path, os.path.join(REPORTS_DIR, state.log_file))
                                 state.logs.append(f"Successfully archived log to {state.log_file}")
 
-                            elif f.lower().endswith(('.avi', '.mp4', '.webm')) and not state.video_file:
+                            elif f.lower().endswith(('.mp4', '.webm', '.avi')) and not state.video_file:
                                 video_ext = os.path.splitext(f)[1]
                                 state.video_file = f"video-{timestamp}{video_ext}"
                                 shutil.move(temp_file_path, os.path.join(REPORTS_DIR, state.video_file))
                                 state.logs.append(f"Successfully archived video to {state.video_file}")
                 
-                if os.path.exists(output_dir):
-                    shutil.rmtree(output_dir)
-
             except Exception as e:
                 state.logs.append(f"\nError archiving reports or video: {e}")
 
@@ -194,9 +195,7 @@ def run_robot_in_thread(command, output_dir, timestamp):
             state.logs.append(f"\nExecution was manually stopped.")
             state.pass_count = 0
             state.fail_count = 0
-            if os.path.exists(output_dir):
-                shutil.rmtree(output_dir)
-
+            
     except Exception as e:
         print(f"Error in execution thread: {e}")
         state.logs.append(f"CRITICAL ERROR in execution thread: {e}")
@@ -204,6 +203,13 @@ def run_robot_in_thread(command, output_dir, timestamp):
             state.status = "failed"
     finally:
         state.process = None
+        # Always try to clean up the temporary directory
+        if os.path.exists(output_dir):
+            try:
+                shutil.rmtree(output_dir)
+            except Exception as e:
+                print(f"Failed to clean up temp directory {output_dir}: {e}")
+                state.logs.append(f"Warning: Failed to clean up temp directory {output_dir}")
 
 
 @app.route('/run', methods=['POST'])
@@ -231,8 +237,8 @@ def run_robot_tests():
         # --- Command Construction (Real) ---
         command = ['robot']
         timestamp = datetime.datetime.now().strftime('%Y%m%d-%H%M%S')
-        # Temporary output directory for this specific run
-        output_dir = os.path.join(os.getcwd(), f'temp_output_{timestamp}') 
+        # Use an absolute path for the temporary output directory
+        output_dir = os.path.join(SCRIPT_DIR, f'temp_output_{timestamp}') 
 
         command.extend(['--outputdir', output_dir])
 
@@ -290,7 +296,9 @@ def stop_robot_tests():
     if state.process and state.process.poll() is None:
         try:
             print(f"--- Terminating Process Group PID: {state.process.pid} ---")
-            state.status = "stopped" # Set status immediately
+            if state.status == "running": # Only change status if it was running
+                state.status = "stopped"
+            
             if os.name == 'nt':
                  # Sends a Ctrl+C signal to the process group on Windows
                  state.process.send_signal(signal.CTRL_C_EVENT)
@@ -323,6 +331,7 @@ def list_reports():
 @app.route('/reports/<filename>', methods=['GET'])
 def get_report(filename):
     try:
+        # Serve the file from the absolute path of REPORTS_DIR
         return send_from_directory(REPORTS_DIR, filename, as_attachment=False)
     except FileNotFoundError:
         return jsonify({"error": "File not found"}), 404
@@ -342,3 +351,5 @@ def delete_report(filename):
 
 if __name__ == '__main__':
     app.run(host='127.0.0.1', port=5001, debug=True)
+
+    
