@@ -236,7 +236,7 @@ def run_robot_tests():
         command = ['robot']
         timestamp = datetime.datetime.now().strftime('%Y%m%d-%H%M%S')
         # Use an absolute path for the temporary output directory
-        output_dir = os.path.join(SCRIPT_DIR, f'temp_output_{timestamp}')
+        output_dir = os.path.abspath(os.path.join(SCRIPT_DIR, f'temp_output_{timestamp}'))
 
         command.extend(['--outputdir', output_dir])
 
@@ -347,5 +347,7 @@ def delete_report(filename):
 
 if __name__ == '__main__':
     app.run(host='127.0.0.1', port=5001, debug=True)
+
+    
 
     
