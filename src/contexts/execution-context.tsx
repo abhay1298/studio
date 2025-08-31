@@ -153,6 +153,12 @@ export function ExecutionProvider({ children }: { children: ReactNode }) {
     }
   }, [projectFileName, projectFileSource, dataFileName, requirementsContent, editedData, editedHeaders, dependencyCheckResult, hasHydrated]);
   
+  const clearDataFile = useCallback(() => {
+    setDataFileName(null);
+    setEditedData([]);
+    setEditedHeaders([]);
+  }, []);
+
   const clearProjectFile = useCallback(() => {
     setProjectFileName(null);
     setProjectFileSource(null);
@@ -160,7 +166,7 @@ export function ExecutionProvider({ children }: { children: ReactNode }) {
     setDependencyCheckResult(null);
     clearDataFile(); // Also clear data file when project is cleared
     toast({ title: 'Project Cleared' });
-  }, [toast]);
+  }, [toast, clearDataFile]);
   
   const fetchSuites = useCallback(async () => {
     if (!projectFileName) {
@@ -189,8 +195,12 @@ export function ExecutionProvider({ children }: { children: ReactNode }) {
   }, [projectFileName]);
 
   useEffect(() => {
-    fetchSuites();
-  }, [fetchSuites]);
+    if (projectFileName) {
+      fetchSuites();
+    } else {
+      setTestSuites([]);
+    }
+  }, [projectFileName, fetchSuites]);
 
   const addLog = useCallback((message: string) => {
     const timestamp = new Date().toLocaleTimeString();
@@ -413,12 +423,6 @@ export function ExecutionProvider({ children }: { children: ReactNode }) {
     }
   }, [toast]);
 
-  const clearDataFile = useCallback(() => {
-    setDataFileName(null);
-    setEditedData([]);
-    setEditedHeaders([]);
-  }, []);
-
   const handleDataFileUpload = useCallback(async (file: File | null) => {
     if (!file) {
       clearDataFile();
@@ -446,59 +450,70 @@ export function ExecutionProvider({ children }: { children: ReactNode }) {
     if (!files || files.length === 0) {
       return;
     }
-
-    const fileArray = Array.from(files);
-    const firstPath = fileArray[0].webkitRelativePath;
+  
+    // Determine project name from the common base directory of the files
+    const firstPath = files[0].webkitRelativePath;
     const projectName = firstPath.split('/')[0] || 'Uploaded Project';
     
-    // Clear previous project state
     clearProjectFile();
     setProjectFileName(projectName);
     setProjectFileSource('local');
-
+  
     try {
-        let foundReqs = false;
-        let dataFileFound: File | null = null;
-        
-        for (const file of fileArray) {
-            const path = file.webkitRelativePath.toLowerCase();
-
-            if (path.endsWith('requirements.txt')) {
-                foundReqs = true;
-                const content = await readFileAsText(file);
-                setRequirementsContent(content);
-            }
-            if (!dataFileFound && (path.endsWith('.csv') || path.endsWith('.xlsx'))) {
-                dataFileFound = file;
-            }
+      const zip = new JSZip();
+      let requirementsFile: File | null = null;
+  
+      // Add all files to the zip, and look for requirements.txt
+      for (const file of Array.from(files)) {
+        zip.file(file.webkitRelativePath, file);
+        if (file.name.toLowerCase() === 'requirements.txt') {
+          requirementsFile = file;
         }
-        
-        if (dataFileFound) {
-            await handleDataFileUpload(dataFileFound);
-        }
-
-        if (!foundReqs) {
-          toast({
-            title: 'Info',
-            description: `requirements.txt not found in the project.`,
-          });
-        }
-        
+      }
+  
+      if (requirementsFile) {
+        const content = await readFileAsText(requirementsFile);
+        setRequirementsContent(content);
+      } else {
         toast({
-            title: 'Project Loaded',
-            description: `${projectName} loaded successfully.`,
-            action: <FileCheck2 className="text-green-500" />,
+          title: 'Info',
+          description: `requirements.txt not found in the project.`,
         });
-
-    } catch (error) {
-        toast({
-            variant: 'destructive',
-            title: 'Error processing project folder',
-            description: 'Could not read the selected folder. Please try again.',
-        });
-        clearProjectFile();
+      }
+  
+      const zipBlob = await zip.generateAsync({type: "blob"});
+      const formData = new FormData();
+      formData.append('project', zipBlob, `${projectName}.zip`);
+  
+      const response = await fetch('/api/upload-project', {
+        method: 'POST',
+        body: formData,
+      });
+  
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Backend failed to process project');
+      }
+  
+      const result = await response.json();
+      toast({
+        title: 'Project Loaded',
+        description: result.message || `${projectName} loaded successfully.`,
+        action: <FileCheck2 className="text-green-500" />,
+      });
+  
+      // After successfully uploading, fetch the new suite list
+      await fetchSuites();
+  
+    } catch (error: any) {
+      toast({
+        variant: 'destructive',
+        title: 'Error processing project folder',
+        description: error.message || 'Could not process the selected folder. Please try again.',
+      });
+      clearProjectFile();
     }
-  }, [clearProjectFile, handleDataFileUpload, toast]);
+  }, [clearProjectFile, toast, fetchSuites]);
 
   const handleGitImport = useCallback((url: string) => {
     if (!url) {
@@ -508,7 +523,6 @@ export function ExecutionProvider({ children }: { children: ReactNode }) {
 
     const repoName = url.split('/').pop()?.replace('.git', '') || 'Git Project';
     
-    // Clear previous project state
     clearProjectFile();
 
     setProjectFileName(repoName);
@@ -625,3 +639,5 @@ export function useExecutionContext() {
   }
   return context;
 }
+
+    

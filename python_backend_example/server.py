@@ -185,12 +185,6 @@ def run_robot_in_thread(command, output_dir, timestamp):
             state.pass_count = output_text.count('| PASS |')
             state.fail_count = output_text.count('| FAIL |')
             
-            # Fallback if parsing fails
-            if state.status == 'success' and state.pass_count == 0 and state.fail_count == 0:
-                state.pass_count = random.randint(1, 5)
-            elif state.status == 'failed' and state.pass_count == 0 and state.fail_count == 0:
-                state.fail_count = random.randint(1, 3)
-                state.pass_count = random.randint(0, 2)
         else: # Handle the 'stopped' case
             state.logs.append(f"\nExecution was manually stopped.")
             state.pass_count = 0
@@ -351,5 +345,7 @@ def delete_report(filename):
 
 if __name__ == '__main__':
     app.run(host='127.0.0.1', port=5001, debug=True)
+
+    
 
     
