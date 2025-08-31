@@ -6,6 +6,7 @@ import { useToast } from "@/hooks/use-toast";
 import { CheckCircle2, FileCheck2, XCircle } from 'lucide-react';
 import Papa from 'papaparse';
 import * as XLSX from 'xlsx';
+import JSZip from 'jszip';
 import type { TestSuite } from '@/components/dashboard/project-explorer';
 import type { DependencyStatus } from '@/components/dashboard/dependency-checker';
 
@@ -46,7 +47,7 @@ interface ExecutionContextType {
   handleRun: (runType: string) => Promise<void>;
   handleStop: () => Promise<void>;
   clearLogs: () => void;
-  handleProjectFileUpload: (files: FileList | null) => void;
+  handleProjectFileUpload: (file: File | null) => void;
   handleDataFileUpload: (file: File | null) => void;
   clearProjectFile: () => void;
   clearDataFile: () => void;
@@ -415,43 +416,50 @@ export function ExecutionProvider({ children }: { children: ReactNode }) {
     }
   }, [clearDataFile, parseAndSetDataFile, toast]);
 
-  const handleProjectFileUpload = useCallback(async (files: FileList | null) => {
-    if (!files || files.length === 0) {
+  const handleProjectFileUpload = useCallback(async (file: File | null) => {
+    if (!file) {
       clearProjectFile();
       return;
     }
-
-    const fileList = Array.from(files);
-    const rootDir = fileList[0].webkitRelativePath.split('/')[0];
-    setProjectFileName(rootDir);
-
-    let foundReqs = false;
-    let foundData = false;
-
+    setProjectFileName(file.name);
     setRequirementsContent(null);
     if (!dataFileName) {
+        setDataFileName(null);
         setEditedData([]);
         setEditedHeaders([]);
-        setDataFileName(null);
     }
-    
+
     try {
-        for (const file of fileList) {
-            const path = file.webkitRelativePath.toLowerCase();
+        const zip = await JSZip.loadAsync(file);
+        let foundReqs = false;
+        let foundData = false;
 
-            if (path.endsWith('requirements.txt')) {
-                const content = await file.text();
-                setRequirementsContent(content);
+        const filePromises: Promise<void>[] = [];
+        
+        zip.forEach((relativePath, zipEntry) => {
+            const isReqs = zipEntry.name.toLowerCase().endsWith('requirements.txt') && !zipEntry.dir;
+            const isData = (zipEntry.name.toLowerCase().endsWith('.csv') || zipEntry.name.toLowerCase().endsWith('.xlsx')) && !zipEntry.dir;
+
+            if (isReqs) {
                 foundReqs = true;
+                filePromises.push(
+                    zipEntry.async('string').then(content => {
+                        setRequirementsContent(content);
+                    })
+                );
             }
-
-            if (!dataFileName && (path.endsWith('.csv') || path.endsWith('.xlsx'))) {
-                const buffer = await readFileAsArrayBuffer(file);
-                await parseAndSetDataFile(buffer, file.name);
-                setDataFileName(file.name);
+            if (isData && !dataFileName) {
                 foundData = true;
+                filePromises.push(
+                    zipEntry.async('arraybuffer').then(buffer => {
+                        setDataFileName(zipEntry.name.split('/').pop() || zipEntry.name);
+                        parseAndSetDataFile(buffer, zipEntry.name);
+                    })
+                );
             }
-        }
+        });
+
+        await Promise.all(filePromises);
 
         if (!foundReqs) {
             toast({
@@ -462,14 +470,15 @@ export function ExecutionProvider({ children }: { children: ReactNode }) {
         
         toast({
             title: 'Project Loaded',
-            description: `${rootDir} loaded successfully.`,
+            description: `${file.name} loaded successfully.`,
             action: <FileCheck2 className="text-green-500" />,
         });
+
     } catch (error) {
         toast({
             variant: 'destructive',
-            title: 'Error processing project folder',
-            description: 'Could not read files from the selected folder.',
+            title: 'Error processing project zip file',
+            description: 'Could not read the selected file. Please ensure it is a valid zip file.',
         });
     }
   }, [clearProjectFile, parseAndSetDataFile, toast, dataFileName]);

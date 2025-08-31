@@ -24,7 +24,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '../ui/tabs';
 type ProjectUploadProps = {
     projectFileName: string | null;
     dataFileName: string | null;
-    onProjectFileChange: (files: FileList | null) => void;
+    onProjectFileChange: (file: File | null) => void;
     onDataFileChange: (file: File | null) => void;
     onClearProjectFile: () => void;
     onClearDataFile: () => void;
@@ -48,16 +48,10 @@ export function ProjectUpload({
     e: React.ChangeEvent<HTMLInputElement>,
     fileType: 'project' | 'data'
   ) => {
-    
+    const file = e.target.files?.[0] || null;
     if (fileType === 'project') {
-        const files = e.target.files;
-        if (files && files.length > 0) {
-            onProjectFileChange(files);
-        } else {
-            onProjectFileChange(null);
-        }
+      onProjectFileChange(file);
     } else if (fileType === 'data') {
-        const file = e.target.files?.[0] || null;
         const allowedDataTypes = [
             'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
             'text/csv',
@@ -93,37 +87,35 @@ export function ProjectUpload({
       <CardHeader>
         <CardTitle className="font-headline">Load Project</CardTitle>
         <CardDescription>
-          Choose a local project folder or import from a Git repository.
+          Upload a project .zip file or import from a Git repository.
         </CardDescription>
       </CardHeader>
       
       {!hasHydrated ? (
         renderLoadingSkeleton()
       ) : !projectFileName ? (
-        <Tabs defaultValue="folder" className="w-full">
+        <Tabs defaultValue="upload" className="w-full">
             <TabsList className="grid w-full grid-cols-2">
-              <TabsTrigger value="folder">Upload Folder</TabsTrigger>
+              <TabsTrigger value="upload">Upload Project</TabsTrigger>
               <TabsTrigger value="git">Import from Git</TabsTrigger>
             </TabsList>
-            <TabsContent value="folder" className="pt-4">
+            <TabsContent value="upload" className="pt-4">
                 <div className="grid gap-2">
-                    <Label htmlFor="project-folder">Robot Framework Project Folder</Label>
+                    <Label htmlFor="project-file">Robot Framework Project (.zip)</Label>
                     <div className="flex items-center gap-2">
-                        <Label htmlFor="project-folder" className={cn(
+                        <Label htmlFor="project-file" className={cn(
                         "flex items-center gap-2 cursor-pointer",
                         buttonVariants({ variant: 'outline' })
                         )}>
-                        <FolderUp className="h-5 w-5" />
-                        <span className="font-bold">Choose Folder</span>
+                        <UploadCloud className="h-5 w-5" />
+                        <span className="font-bold">Choose File</span>
                         </Label>
                         <Input
-                            id="project-folder"
+                            id="project-file"
                             type="file"
                             className="hidden"
+                            accept=".zip,application/zip,application/x-zip-compressed"
                             onChange={(e) => handleFileChange(e, 'project')}
-                            // @ts-ignore
-                            webkitdirectory="true"
-                            directory="true"
                         />
                     </div>
                 </div>
