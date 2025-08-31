@@ -25,11 +25,12 @@ SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 # This is the directory that contains your .robot files.
 # Example for Windows: TESTS_DIRECTORY = 'C:/Users/YourUser/Documents/RobotMaestro/tests'
 # Example for macOS/Linux: TESTS_DIRECTORY = '/Users/YourUser/Documents/RobotMaestro/tests'
-TESTS_DIRECTORY = None # Replace with your project path
+TESTS_DIRECTORY = os.path.join(SCRIPT_DIR, '..', '..', 'tests_example') # A default example path
 
-if not TESTS_DIRECTORY:
+if not os.path.exists(TESTS_DIRECTORY):
     print("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
-    print("!!! WARNING: `TESTS_DIRECTORY` is not configured.    !!!")
+    print("!!! WARNING: `TESTS_DIRECTORY` does not exist.       !!!")
+    print(f"!!! Default path set to: {TESTS_DIRECTORY}")
     print("!!! Please edit `server.py` and set this variable.   !!!")
     print("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
 
@@ -41,7 +42,6 @@ if not TESTS_DIRECTORY:
 #    (e.g., `pip install -r requirements.txt`)
 # 2. Place your Robot Framework project (e.g., your 'tests' folder)
 #    in a location accessible to this server.
-# 3. This server still simulates pass/fail counts for UI purposes.
 
 # --- Global State ---
 class ExecutionState:
@@ -181,6 +181,7 @@ def run_robot_in_thread(command, output_dir, timestamp):
             state.status = 'success' if state.return_code == 0 else 'failed'
             state.logs.append(f"\nExecution Result: {state.status.upper()} (Exit Code {state.return_code})")
 
+            # Correctly parse pass/fail counts from the full output
             output_text = "\n".join(full_output)
             state.pass_count = output_text.count('| PASS |')
             state.fail_count = output_text.count('| FAIL |')
@@ -209,8 +210,8 @@ def run_robot_in_thread(command, output_dir, timestamp):
 @app.route('/run', methods=['POST'])
 def run_robot_tests():
     global state
-    if not TESTS_DIRECTORY:
-        return jsonify({"status": "error", "message": "Cannot run tests: `TESTS_DIRECTORY` is not configured in `server.py`."}), 400
+    if not TESTS_DIRECTORY or not os.path.isdir(TESTS_DIRECTORY):
+        return jsonify({"status": "error", "message": "Cannot run tests: `TESTS_DIRECTORY` is not configured correctly in `server.py`."}), 400
 
     if state.status == "running":
         return jsonify({"status": "error", "message": "Another execution is already in progress."}), 409
@@ -345,3 +346,5 @@ def delete_report(filename):
 
 if __name__ == '__main__':
     app.run(host='127.0.0.1', port=5001, debug=True)
+
+    

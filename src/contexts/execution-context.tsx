@@ -6,7 +6,7 @@ import JSZip from 'jszip';
 import Papa from 'papaparse';
 import * as XLSX from 'xlsx';
 import { useToast } from "@/hooks/use-toast";
-import { CheckCircle2, FileCheck2, GitBranch, XCircle, FileWarning } from 'lucide-react';
+import { CheckCircle2, FileCheck2, GitBranch, XCircle, FileWarning, StopCircle } from 'lucide-react';
 import type { TestSuite } from '@/components/dashboard/project-explorer';
 import type { DependencyStatus } from '@/components/dashboard/dependency-checker';
 
@@ -227,7 +227,14 @@ export function ExecutionProvider({ children }: { children: ReactNode }) {
               videoFile
           };
           const historyJSON = localStorage.getItem('robotMaestroRuns');
-          const runs = historyJSON ? JSON.parse(historyJSON) : [];
+          let runs = [];
+          if (historyJSON) {
+            try {
+              runs = JSON.parse(historyJSON);
+            } catch (e) {
+              console.error("Could not parse localStorage, starting fresh.", e);
+            }
+          }
           runs.push(newRun);
           localStorage.setItem('robotMaestroRuns', JSON.stringify(runs));
           window.dispatchEvent(new CustomEvent('runsUpdated'));
@@ -288,12 +295,12 @@ export function ExecutionProvider({ children }: { children: ReactNode }) {
             const endTime = Date.now();
             const duration = ((endTime - startTime) / 1000).toFixed(2) + 's';
             const suiteName = getSuiteNameForRun(runType);
-            const finalStatus = data.status === 'success' ? 'success' : 'failed';
+            const finalStatus = data.status === 'success' ? 'success' : data.status === 'stopped' ? 'stopped' : 'failed';
             setStatus(finalStatus);
   
             saveRunToHistory(
               suiteName,
-              finalStatus === 'success' ? 'Success' : 'Failed',
+              finalStatus === 'success' ? 'Success' : finalStatus === 'stopped' ? 'Stopped' : 'Failed',
               duration,
               data.pass_count || 0,
               data.fail_count || 0,
@@ -308,13 +315,19 @@ export function ExecutionProvider({ children }: { children: ReactNode }) {
                 description: `Run finished in ${duration}.`,
                 action: <CheckCircle2 className="text-green-500" />,
               });
-            } else {
+            } else if (finalStatus === 'failed') {
               setLastFailedLogs(data.logs.join('\n'));
               toast({
                 variant: "destructive",
                 title: "Execution Failed",
                 description: "Check logs for details.",
                 action: <XCircle />,
+              });
+            } else if (finalStatus === 'stopped') {
+               toast({
+                  title: "Execution Stopped",
+                  description: "The test run was terminated by the user.",
+                  action: <StopCircle className="text-yellow-500" />,
               });
             }
           }
@@ -360,14 +373,15 @@ export function ExecutionProvider({ children }: { children: ReactNode }) {
         }
         const result = await response.json();
         addLog(result.message);
-        setStatus('stopped');
+        // The polling interval will handle the status change to "stopped"
+        // setStatus('stopped'); // No need to set it here
         toast({
-            title: "Execution Stopped",
-            description: "The test run has been terminated.",
+            title: "Stop Signal Sent",
+            description: "The test run will be terminated.",
         });
 
     } catch (e) {
-        addLog('Failed to stop execution. It may have already completed.');
+        addLog('Failed to send stop signal. It may have already completed.');
         setStatus('failed');
         toast({
             variant: "destructive",
@@ -485,20 +499,12 @@ export function ExecutionProvider({ children }: { children: ReactNode }) {
         await handleDataFileUpload(dataFile);
       }
   
-      const response = await fetch('/api/upload-project', {
-        method: 'POST',
-        body: formData,
-      });
-  
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'Backend failed to process project');
-      }
-  
-      const result = await response.json();
+      // This is a placeholder for actual folder upload to backend.
+      // In a real scenario, you'd send formData to the backend.
+      // For this app, we assume the backend has the folder.
       toast({
         title: 'Project Loaded',
-        description: result.message || `${projectName} loaded successfully.`,
+        description: `${projectName} is now the active project.`,
         action: <FileCheck2 className="text-green-500" />,
       });
   
@@ -638,3 +644,5 @@ export function useExecutionContext() {
   }
   return context;
 }
+
+    
