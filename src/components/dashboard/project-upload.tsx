@@ -3,7 +3,7 @@
 "use client";
 
 import * as React from 'react';
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   Card,
@@ -52,7 +52,7 @@ export function ProjectUpload({
     
     if (fileType === 'project') {
         const allowedProjectTypes = ['application/zip', 'application/x-zip-compressed'];
-        if (file && allowedProjectTypes.includes(file.type)) {
+        if (file && (allowedProjectTypes.includes(file.type) || file.name.endsWith('.zip'))) {
             onProjectFileChange(file);
         } else {
             onProjectFileChange(null);
@@ -70,7 +70,7 @@ export function ProjectUpload({
             'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
             'text/csv',
         ];
-        if (file && allowedDataTypes.includes(file.type)) {
+         if (file && (allowedDataTypes.includes(file.type) || file.name.endsWith('.csv') || file.name.endsWith('.xlsx'))) {
             onDataFileChange(file);
         } else {
             onDataFileChange(null);
@@ -130,7 +130,7 @@ export function ProjectUpload({
       </CardHeader>
       
       {!projectFileName ? (
-        <Tabs defaultValue="git" className="w-full">
+        <Tabs defaultValue="upload" className="w-full">
             <TabsList className="grid w-full grid-cols-2 mx-6" style={{width: 'calc(100% - 3rem)'}}>
                 <TabsTrigger value="git" disabled={isCloning}>
                     <GitBranch className="mr-2 h-4 w-4" />
@@ -258,5 +258,3 @@ export function ProjectUpload({
     </div>
   );
 }
-
-    
