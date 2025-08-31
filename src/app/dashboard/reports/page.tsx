@@ -274,7 +274,7 @@ export default function ReportsPage() {
                 ))
               ) : (
                 <TableRow>
-                    <TableCell colSpan={8} className="h-24 text-center">
+                    <TableCell colSpan={7} className="h-24 text-center">
                         <div className="flex flex-col items-center gap-2">
                             <Ban className="h-8 w-8 text-muted-foreground" />
                             <p className="text-muted-foreground">No reports found.</p>

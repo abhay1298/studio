@@ -32,7 +32,7 @@ type RecentRun = {
 };
 
 export default function DashboardPage() {
-  const { projectFileName, hasHydrated } = useExecutionContext();
+  const { projectFileName, projectFileSource, hasHydrated } = useExecutionContext();
   const [recentRuns, setRecentRuns] = useState<RecentRun[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   
@@ -86,12 +86,26 @@ export default function DashboardPage() {
 
   useEffect(() => {
     loadRunHistory();
-    window.addEventListener('runsUpdated', loadRunHistory);
+    const handleRunsUpdated = () => loadRunHistory();
+    window.addEventListener('runsUpdated', handleRunsUpdated);
     
     return () => {
-      window.removeEventListener('runsUpdated', loadRunHistory);
+      window.removeEventListener('runsUpdated', handleRunsUpdated);
     };
   }, []);
+
+  const getDisplayProjectName = () => {
+    if (!projectFileName) {
+      return 'Not Configured';
+    }
+    if (projectFileSource === 'local') {
+      // For local uploads, projectFileName is often a path like `my-project/tests/test.robot`
+      // We just want the root folder `my-project`.
+      const parts = projectFileName.split('/');
+      return parts[0] || projectFileName;
+    }
+    return projectFileName;
+  }
 
   return (
     <div className="grid gap-4 md:gap-8">
@@ -133,7 +147,7 @@ export default function DashboardPage() {
             <CardHeader className="pb-2">
               <CardDescription>Active Project</CardDescription>
                <CardTitle className="font-headline text-3xl truncate" title={!hasHydrated ? 'Loading...' : (projectFileName || 'Not Configured')}>
-                 {!hasHydrated ? <Skeleton className="w-40 h-8" /> : (projectFileName || 'Not Configured')}
+                 {!hasHydrated ? <Skeleton className="w-40 h-8" /> : getDisplayProjectName()}
               </CardTitle>
             </CardHeader>
             <CardContent>
