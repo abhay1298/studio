@@ -120,6 +120,13 @@ export function ExecutionProvider({ children }: { children: ReactNode }) {
     sessionStorage.setItem('editedHeaders', JSON.stringify(editedHeaders));
     sessionStorage.setItem('dependencyCheckResult', JSON.stringify(dependencyCheckResult));
   }, [projectFileName, dataFileName, requirementsContent, editedData, editedHeaders, dependencyCheckResult]);
+
+  useEffect(() => {
+    if (projectFileName === null) {
+      setRequirementsContent(null);
+      setDependencyCheckResult(null);
+    }
+  }, [projectFileName]);
   
   const fetchSuites = useCallback(async () => {
     setIsLoadingSuites(true);
@@ -359,10 +366,7 @@ export function ExecutionProvider({ children }: { children: ReactNode }) {
 
   const clearProjectFile = useCallback(() => {
     setProjectFileName(null);
-    setRequirementsContent(null);
-    setDependencyCheckResult(null);
-    toast({ title: 'Project Cleared' });
-  }, [toast]);
+  }, []);
 
   const clearDataFile = useCallback(() => {
     setDataFileName(null);
@@ -402,9 +406,6 @@ export function ExecutionProvider({ children }: { children: ReactNode }) {
     }
   
     setProjectFileName(file.name);
-    // Reset dependant state
-    setRequirementsContent(null);
-    setDependencyCheckResult(null);
   
     try {
       const buffer = await readFileAsArrayBuffer(file);
@@ -418,16 +419,11 @@ export function ExecutionProvider({ children }: { children: ReactNode }) {
         const reqFile = zip.files[reqFileKey];
         const content = await reqFile.async('string');
         setRequirementsContent(content);
-        toast({
-            title: 'Project Inspected',
-            description: `${file.name} loaded and requirements.txt found.`,
-            action: <FileCheck2 className="text-green-500" />,
-        });
       } else {
         setRequirementsContent(null);
         toast({
-            title: 'Project Inspected',
-            description: `requirements.txt not found in project.`,
+            title: 'Info',
+            description: `requirements.txt not found in the project.`,
         });
       }
       
@@ -440,6 +436,12 @@ export function ExecutionProvider({ children }: { children: ReactNode }) {
         setDataFileName(dataFile.name);
         await parseAndSetDataFile(dataBuffer, dataFile.name);
       }
+
+      toast({
+        title: 'Project Loaded',
+        description: `${file.name} inspected successfully.`,
+        action: <FileCheck2 className="text-green-500" />,
+      });
   
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
@@ -449,7 +451,6 @@ export function ExecutionProvider({ children }: { children: ReactNode }) {
         title: 'Error processing project',
         description: `Could not process the project file. It may be corrupted or not a valid zip.`,
       });
-      clearProjectFile();
     }
   }, [clearProjectFile, parseAndSetDataFile, toast]);
 
@@ -486,7 +487,6 @@ export function ExecutionProvider({ children }: { children: ReactNode }) {
   const installDependencies = useCallback(() => {
     if (!dependencyCheckResult) return;
     
-    // This is a simulation of installation
     toast({
         title: 'Installation in Progress',
         description: 'Simulating installation of missing packages...',
@@ -547,5 +547,3 @@ export function useExecutionContext() {
   }
   return context;
 }
-
-    
