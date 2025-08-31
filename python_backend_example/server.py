@@ -111,24 +111,31 @@ def list_suites():
     except Exception as e:
         return jsonify({"error": f"Failed to scan for suites: {str(e)}"}), 500
 
-def find_video_files(directory):
-    """Finds all video files in a directory."""
+def find_video_in_dir(directory):
+    """Finds the most recently modified video file in a directory."""
     video_extensions = ('.mp4', '.webm', '.avi', '.mov')
-    found_files = []
+    latest_video = None
+    latest_time = 0
+
+    if not os.path.isdir(directory):
+        state.logs.append(f"Video search directory '{directory}' not found.")
+        return None
+
     for root, _, files in os.walk(directory):
         for file in files:
             if file.lower().endswith(video_extensions):
-                found_files.append(os.path.join(root, file))
-    return set(found_files)
+                file_path = os.path.join(root, file)
+                mod_time = os.path.getmtime(file_path)
+                if mod_time > latest_time:
+                    latest_time = mod_time
+                    latest_video = file_path
+    return latest_video
 
 
 def run_robot_in_thread(command, output_dir, timestamp, project_dir):
     """The target function for the execution thread that runs the robot command."""
     global state
     output_dir = os.path.abspath(output_dir) # Ensure path is absolute
-
-    # --- Pre-execution snapshot ---
-    videos_before = find_video_files(project_dir)
 
     try:
         # Use CREATE_NEW_PROCESS_GROUP on Windows to allow sending Ctrl+C
@@ -187,19 +194,19 @@ def run_robot_in_thread(command, output_dir, timestamp, project_dir):
                         state.log_file = archived_name
                         state.logs.append(f"Successfully archived log to {state.log_file}")
 
-            # 2. Find and archive the new video file
-            videos_after = find_video_files(project_dir)
-            new_videos = videos_after - videos_before
-            if new_videos:
-                # Get the first new video found
-                new_video_path = new_videos.pop()
+            # 2. Find and archive the new video file from the specific directory
+            video_search_dir = os.path.join(project_dir, 'execution video')
+            state.logs.append(f"Searching for video in: {video_search_dir}")
+            new_video_path = find_video_in_dir(video_search_dir)
+
+            if new_video_path:
                 video_ext = os.path.splitext(new_video_path)[1]
                 archived_video_name = f"video-{timestamp}{video_ext}"
                 shutil.move(new_video_path, os.path.join(REPORTS_DIR, archived_video_name))
                 state.video_file = archived_video_name
                 state.logs.append(f"Successfully archived video '{os.path.basename(new_video_path)}' to {state.video_file}")
             else:
-                state.logs.append("No new video file found in project directory after execution.")
+                state.logs.append("No video file found in 'execution video' directory.")
 
         except Exception as e:
             state.logs.append(f"\nError during report/video archiving: {e}")
