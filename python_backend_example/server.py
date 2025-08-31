@@ -194,8 +194,11 @@ def run_robot_in_thread(command, output_dir, timestamp, project_dir):
                         state.log_file = archived_name
                         state.logs.append(f"Successfully archived log to {state.log_file}")
 
-            # 2. Find and archive the new video file from the specific directory
-            video_search_dir = os.path.join(project_dir, 'Execution_Videos')
+            # 2. Find and archive the new video file from the specific directory.
+            # Assumes 'Execution_Videos' is in the parent directory of 'project_dir' (TESTS_DIRECTORY)
+            project_root = os.path.dirname(os.path.abspath(project_dir))
+            video_search_dir = os.path.join(project_root, 'Execution_Videos')
+            
             state.logs.append(f"Searching for video in: {video_search_dir}")
             new_video_path = find_video_in_dir(video_search_dir)
 
@@ -383,4 +386,3 @@ if __name__ == '__main__':
     
 
     
-
