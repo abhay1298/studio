@@ -1,5 +1,4 @@
 
-
 "use client";
 
 import * as React from 'react';
@@ -15,11 +14,11 @@ import {
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Button, buttonVariants } from '@/components/ui/button';
-import { useToast } from '@/hooks/use-toast';
-import { UploadCloud, Pencil, FolderUp, FolderArchive, FileSpreadsheet } from 'lucide-react';
+import { UploadCloud, Pencil, FolderUp, FolderArchive, FileSpreadsheet, GitBranch } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useExecutionContext } from '@/contexts/execution-context';
 import { Skeleton } from '../ui/skeleton';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '../ui/tabs';
 
 
 type ProjectUploadProps = {
@@ -29,6 +28,7 @@ type ProjectUploadProps = {
     onDataFileChange: (file: File | null) => void;
     onClearProjectFile: () => void;
     onClearDataFile: () => void;
+    onGitImport: (repoUrl: string) => void;
 };
 
 export function ProjectUpload({ 
@@ -37,10 +37,12 @@ export function ProjectUpload({
     onProjectFileChange,
     onDataFileChange,
     onClearProjectFile,
-    onClearDataFile
+    onClearDataFile,
+    onGitImport
 }: ProjectUploadProps) {
   const router = useRouter();
   const { hasHydrated } = useExecutionContext();
+  const [gitUrl, setGitUrl] = React.useState('');
 
   const handleFileChange = async (
     e: React.ChangeEvent<HTMLInputElement>,
@@ -91,36 +93,59 @@ export function ProjectUpload({
       <CardHeader>
         <CardTitle className="font-headline">Load Project</CardTitle>
         <CardDescription>
-          Select your local Robot Framework project folder to get started.
+          Choose a local project folder or import from a Git repository.
         </CardDescription>
       </CardHeader>
       
       {!hasHydrated ? (
         renderLoadingSkeleton()
       ) : !projectFileName ? (
-        <CardContent className="grid gap-6 pt-6">
-            <div className="grid gap-2">
-            <Label htmlFor="project-folder">Robot Framework Project Folder</Label>
-            <div className="flex items-center gap-2">
-                <Label htmlFor="project-folder" className={cn(
-                "flex items-center gap-2 cursor-pointer",
-                buttonVariants({ variant: 'outline' })
-                )}>
-                <FolderUp className="h-5 w-5" />
-                <span className="font-bold">Choose Folder</span>
-                </Label>
-                <Input
-                    id="project-folder"
-                    type="file"
-                    className="hidden"
-                    onChange={(e) => handleFileChange(e, 'project')}
-                    // @ts-ignore
-                    webkitdirectory="true"
-                    directory="true"
-                />
-            </div>
-            </div>
-        </CardContent>
+        <Tabs defaultValue="folder" className="w-full">
+            <TabsList className="grid w-full grid-cols-2">
+              <TabsTrigger value="folder">Upload Folder</TabsTrigger>
+              <TabsTrigger value="git">Import from Git</TabsTrigger>
+            </TabsList>
+            <TabsContent value="folder" className="pt-4">
+                <div className="grid gap-2">
+                    <Label htmlFor="project-folder">Robot Framework Project Folder</Label>
+                    <div className="flex items-center gap-2">
+                        <Label htmlFor="project-folder" className={cn(
+                        "flex items-center gap-2 cursor-pointer",
+                        buttonVariants({ variant: 'outline' })
+                        )}>
+                        <FolderUp className="h-5 w-5" />
+                        <span className="font-bold">Choose Folder</span>
+                        </Label>
+                        <Input
+                            id="project-folder"
+                            type="file"
+                            className="hidden"
+                            onChange={(e) => handleFileChange(e, 'project')}
+                            // @ts-ignore
+                            webkitdirectory="true"
+                            directory="true"
+                        />
+                    </div>
+                </div>
+            </TabsContent>
+            <TabsContent value="git" className="pt-4">
+                <div className="grid gap-2">
+                    <Label htmlFor="git-url">Git Repository URL</Label>
+                    <div className="flex items-center gap-2">
+                        <Input 
+                            id="git-url" 
+                            placeholder="https://github.com/user/repo.git"
+                            value={gitUrl}
+                            onChange={(e) => setGitUrl(e.target.value)}
+                        />
+                         <Button onClick={() => onGitImport(gitUrl)} disabled={!gitUrl}>
+                            <GitBranch className="mr-2 h-4 w-4"/>
+                            Import
+                        </Button>
+                    </div>
+                </div>
+            </TabsContent>
+        </Tabs>
       ) : (
         <CardContent className="pt-6">
              <div className="bg-muted/50 rounded-lg p-4">

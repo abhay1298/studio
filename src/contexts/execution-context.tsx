@@ -52,6 +52,7 @@ interface ExecutionContextType {
   clearDataFile: () => void;
   checkDependencies: () => void;
   installDependencies: () => void;
+  handleGitImport: (repoUrl: string) => void;
 }
 
 const ExecutionContext = createContext<ExecutionContextType | undefined>(undefined);
@@ -148,12 +149,7 @@ export function ExecutionProvider({ children }: { children: ReactNode }) {
         const response = await fetch('/api/list-suites');
         
         if (!response.ok) {
-            let errorData;
-            try {
-              errorData = await response.json();
-            } catch (e) {
-              throw new Error(`Backend returned a non-JSON error: ${response.statusText}`);
-            }
+            const errorData = await response.json();
             throw new Error(errorData.error || `Failed to fetch suites from the backend. Status: ${response.status}`);
         }
         
@@ -432,52 +428,79 @@ export function ExecutionProvider({ children }: { children: ReactNode }) {
     let foundReqs = false;
     let foundData = false;
 
-    // Prioritize requirements.txt
-    const reqFile = fileList.find(file => file.name.toLowerCase() === 'requirements.txt');
-    if (reqFile) {
-        try {
-            const content = await reqFile.text();
-            setRequirementsContent(content);
-            foundReqs = true;
-        } catch (e) {
-            console.error("Error reading requirements.txt", e);
-        }
+    setRequirementsContent(null);
+    if (!dataFileName) {
+        setEditedData([]);
+        setEditedHeaders([]);
+        setDataFileName(null);
     }
     
-    if (!foundReqs) {
-        setRequirementsContent(null);
-        toast({
-            title: 'Info',
-            description: `requirements.txt not found in the project.`,
-        });
-    }
+    try {
+        for (const file of fileList) {
+            const path = file.webkitRelativePath.toLowerCase();
 
-    // Then look for data files, but don't overwrite if one is already loaded manually
-    if (!dataFileName) {
-        const dataFile = fileList.find(file => {
-            const lowerCaseName = file.name.toLowerCase();
-            return lowerCaseName.endsWith('.csv') || lowerCaseName.endsWith('.xlsx');
-        });
+            if (path.endsWith('requirements.txt')) {
+                const content = await file.text();
+                setRequirementsContent(content);
+                foundReqs = true;
+            }
 
-        if (dataFile) {
-            try {
-                const buffer = await readFileAsArrayBuffer(dataFile);
-                await parseAndSetDataFile(buffer, dataFile.name);
-                setDataFileName(dataFile.name);
+            if (!dataFileName && (path.endsWith('.csv') || path.endsWith('.xlsx'))) {
+                const buffer = await readFileAsArrayBuffer(file);
+                await parseAndSetDataFile(buffer, file.name);
+                setDataFileName(file.name);
                 foundData = true;
-            } catch (e) {
-                console.error("Error reading data file from project", e);
             }
         }
+
+        if (!foundReqs) {
+            toast({
+                title: 'Info',
+                description: `requirements.txt not found in the project.`,
+            });
+        }
+        
+        toast({
+            title: 'Project Loaded',
+            description: `${rootDir} loaded successfully.`,
+            action: <FileCheck2 className="text-green-500" />,
+        });
+    } catch (error) {
+        toast({
+            variant: 'destructive',
+            title: 'Error processing project folder',
+            description: 'Could not read files from the selected folder.',
+        });
     }
+  }, [clearProjectFile, parseAndSetDataFile, toast, dataFileName]);
+  
+  const handleGitImport = useCallback(async (repoUrl: string) => {
+    if (!repoUrl) {
+        toast({ variant: 'destructive', title: 'Git URL cannot be empty.'});
+        return;
+    }
+    
+    // Simulate cloning
+    const repoName = repoUrl.split('/').pop()?.replace('.git', '') || 'git-project';
+    setProjectFileName(repoName);
+    
+    // Simulate finding files
+    const dummyReqs = 'Flask==2.0.1\nrobotframework==4.1.3\nrequests==2.26.0';
+    setRequirementsContent(dummyReqs);
+
+    const dummyCsvData = `id,priority,test_case\n1,high,Login Test\n2,medium,Search Functionality`;
+    const dummyCsvFile = new File([dummyCsvData], "test_data.csv", { type: "text/csv" });
+    const buffer = await readFileAsArrayBuffer(dummyCsvFile);
+    await parseAndSetDataFile(buffer, "test_data.csv");
+    setDataFileName("test_data.csv");
 
     toast({
-        title: 'Project Loaded',
-        description: `${rootDir} loaded successfully. ${foundReqs ? 'Found requirements.txt. ' : ''}${foundData ? 'Found data file.' : ''}`,
+        title: 'Project Imported',
+        description: `Simulated import of '${repoName}'. Found dummy requirements and data file.`,
         action: <FileCheck2 className="text-green-500" />,
     });
-  
-  }, [clearProjectFile, parseAndSetDataFile, toast, dataFileName]);
+
+  }, [toast, parseAndSetDataFile]);
 
   const checkDependencies = useCallback(async () => {
     if (!requirementsContent) {
@@ -556,7 +579,8 @@ export function ExecutionProvider({ children }: { children: ReactNode }) {
     clearProjectFile,
     clearDataFile,
     checkDependencies,
-    installDependencies
+    installDependencies,
+    handleGitImport
   };
 
   return (

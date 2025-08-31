@@ -14,7 +14,8 @@ export default function ProjectManagementPage() {
     handleProjectFileUpload,
     handleDataFileUpload,
     clearProjectFile,
-    clearDataFile
+    clearDataFile,
+    handleGitImport
   } = useExecutionContext();
 
   return (
@@ -29,6 +30,7 @@ export default function ProjectManagementPage() {
         onDataFileChange={handleDataFileUpload}
         onClearProjectFile={clearProjectFile}
         onClearDataFile={clearDataFile}
+        onGitImport={handleGitImport}
       />
       <Card>
         <CardHeader>
@@ -42,5 +44,3 @@ export default function ProjectManagementPage() {
     </div>
   );
 }
-
-    
