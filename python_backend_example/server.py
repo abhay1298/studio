@@ -93,9 +93,6 @@ def parse_robot_file(file_path):
 @app.route('/list-suites', methods=['GET'])
 def list_suites():
     """Scans the configured test directory and returns a list of suites and their test cases."""
-    if not TESTS_DIRECTORY:
-        return jsonify({"error": "The `TESTS_DIRECTORY` has not been configured in `server.py`. Please set this variable and restart the server."}), 404
-
     if not os.path.isdir(TESTS_DIRECTORY):
         return jsonify({"error": f"Configured TESTS_DIRECTORY is not a valid directory: {TESTS_DIRECTORY}"}), 500
         
@@ -124,6 +121,10 @@ def run_robot_in_thread(command, output_dir, timestamp):
     """The target function for the execution thread."""
     global state
     try:
+        # Reset counts for the new run
+        state.pass_count = 0
+        state.fail_count = 0
+
         # Use CREATE_NEW_PROCESS_GROUP on Windows to allow sending Ctrl+C
         # Use preexec_fn=os.setsid on Unix-like systems to create a new process group
         creation_flags = subprocess.CREATE_NEW_PROCESS_GROUP if os.name == 'nt' else 0
@@ -140,12 +141,19 @@ def run_robot_in_thread(command, output_dir, timestamp):
             preexec_fn=preexec_fn
         )
 
-        full_output = []
         # Read stdout line by line in a non-blocking way
         for line in iter(state.process.stdout.readline, ''):
             clean_line = line.strip()
             state.logs.append(clean_line)
-            full_output.append(clean_line)
+
+            # --- Accurate Pass/Fail Counting ---
+            # A test case line doesn't start with '---' or '==='
+            if not clean_line.startswith(('---', '===')):
+                if clean_line.endswith('| PASS |'):
+                    state.pass_count += 1
+                elif clean_line.endswith('| FAIL |'):
+                    state.fail_count += 1
+
         
         state.process.stdout.close()
         state.return_code = state.process.wait()
@@ -180,11 +188,6 @@ def run_robot_in_thread(command, output_dir, timestamp):
 
             state.status = 'success' if state.return_code == 0 else 'failed'
             state.logs.append(f"\nExecution Result: {state.status.upper()} (Exit Code {state.return_code})")
-
-            # Correctly parse pass/fail counts from the full output
-            output_text = "\n".join(full_output)
-            state.pass_count = output_text.count('| PASS |')
-            state.fail_count = output_text.count('| FAIL |')
             
         else: # Handle the 'stopped' case
             state.logs.append(f"\nExecution was manually stopped.")
@@ -227,7 +230,7 @@ def run_robot_tests():
         runType = data.get('runType')
         config = data.get('config', {})
         
-        tests_directory = TESTS_DIRECTORY
+        tests_directory_to_run = TESTS_DIRECTORY
 
         # --- Command Construction (Real) ---
         command = ['robot']
@@ -244,14 +247,12 @@ def run_robot_tests():
                 command.extend(['-e', config['excludeTags']])
         elif runType == 'By Suite' and config.get('suite'):
             # When running by suite, we need to construct the full path to the suite file
-            suite_path = os.path.join(tests_directory, config['suite'].replace('/', os.sep))
-            command.append(suite_path)
-            tests_directory = None # Unset this so it's not appended again
+            suite_path = os.path.join(TESTS_DIRECTORY, config['suite'].replace('/', os.sep))
+            tests_directory_to_run = suite_path # We run this specific file
         elif runType == 'By Test Case' and config.get('testcase'):
             command.extend(['-t', config['testcase']])
         
-        if tests_directory:
-            command.append(tests_directory)
+        command.append(tests_directory_to_run)
             
         state.logs.append("==============================================================================")
         state.logs.append(f"Executing command: {' '.join(command)}")
@@ -346,5 +347,7 @@ def delete_report(filename):
 
 if __name__ == '__main__':
     app.run(host='127.0.0.1', port=5001, debug=True)
+
+    
 
     
