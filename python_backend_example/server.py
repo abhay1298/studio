@@ -1,4 +1,3 @@
-
 from flask import Flask, request, jsonify, make_response, send_from_directory, redirect
 from flask_cors import CORS
 import subprocess
@@ -16,6 +15,7 @@ import pkg_resources
 import re
 from threading import Thread
 from collections import deque
+import json
 
 app = Flask(__name__)
 CORS(app) # Enable CORS for all routes
@@ -57,6 +57,7 @@ class ExecutionState:
         self.log_file = None
         self.video_file = None
         self.return_code = None
+        self.orchestrator_data = None # To hold data from the UI
 
     def reset(self):
         """Resets the state to its initial values for a new run."""
@@ -383,6 +384,43 @@ def parse_test_statistics_from_xml(output_dir):
         return 0, 0
 
 
+def create_variable_file_from_data(timestamp):
+    """Creates a temporary Python variable file from the orchestrator data."""
+    if not state.orchestrator_data:
+        return None
+
+    headers = state.orchestrator_data.get('headers', [])
+    data_rows = state.orchestrator_data.get('data', [])
+
+    if not headers or not data_rows:
+        return None
+
+    var_file_path = os.path.join(tempfile.gettempdir(), f'orchestrator_vars_{timestamp}.py')
+
+    with open(var_file_path, 'w', encoding='utf-8') as f:
+        f.write("# Auto-generated variable file for Robot Maestro Orchestrator\n\n")
+        
+        # Write each header as a variable, taking its value from the first data row.
+        # This makes single-run data-driven tests easy.
+        first_row = data_rows[0]
+        for i, header in enumerate(headers):
+            # Sanitize header to be a valid Python variable name
+            var_name = re.sub(r'\W|^(?=\d)', '_', header)
+            value = first_row[i] if i < len(first_row) else ""
+            f.write(f"{var_name} = {json.dumps(value)}\n")
+            
+        # Also provide the full data set as a list of dictionaries for looping tests
+        f.write("\n# Full data set for looping tests\n")
+        f.write("ORCHESTRATOR_DATA = [\n")
+        for row in data_rows:
+            row_dict = {re.sub(r'\W|^(?=\d)', '_', headers[i]): (row[i] if i < len(row) else "") for i in range(len(headers))}
+            f.write(f"    {json.dumps(row_dict)},\n")
+        f.write("]\n")
+        
+    state.logs.append(f"Created temporary variable file: {var_file_path}")
+    return var_file_path
+
+
 def run_robot_in_thread(command, output_dir, timestamp, project_dir):
     """The target function for the execution thread that runs the robot command."""
     global state
@@ -624,6 +662,13 @@ def run_robot_tests():
 
         runType = data.get('runType')
         config = data.get('config', {})
+        
+        # Store orchestrator data if provided
+        if runType == 'Orchestrator' and 'orchestratorData' in config:
+            state.orchestrator_data = config['orchestratorData']
+            state.logs.append("Received orchestrator data.")
+        else:
+            state.orchestrator_data = None
 
         # This will be the final path passed to the robot command
         tests_to_run_path = TESTS_DIRECTORY
@@ -635,6 +680,8 @@ def run_robot_tests():
         output_dir = os.path.abspath(os.path.join(SCRIPT_DIR, f'temp_output_{timestamp}'))
 
         command.extend(['--outputdir', output_dir])
+        
+        variable_file_to_cleanup = None
 
         if runType == 'By Tag':
             if config.get('includeTags'):
@@ -650,6 +697,13 @@ def run_robot_tests():
                  return jsonify({"status": "error", "message": f"Suite file not found: {suite_path}"}), 404
         elif runType == 'By Test Case' and config.get('testcase'):
             command.extend(['-t', config['testcase']])
+        elif runType == 'Orchestrator':
+            variable_file_to_cleanup = create_variable_file_from_data(timestamp)
+            if variable_file_to_cleanup:
+                command.extend(['--variablefile', variable_file_to_cleanup])
+            else:
+                state.logs.append("Warning: Orchestrator run requested but no data was available to create a variable file.")
+
 
         # The last argument to the command is the path to the tests to run
         command.append(tests_to_run_path)
@@ -662,6 +716,19 @@ def run_robot_tests():
         thread = Thread(target=run_robot_in_thread, args=(command, output_dir, timestamp, TESTS_DIRECTORY))
         thread.daemon = True
         thread.start()
+        
+        # Clean up the variable file after a delay to ensure robot has loaded it
+        if variable_file_to_cleanup:
+            # This is a simple cleanup. A more robust solution might wait for the thread.
+            # But for now, just remove it after starting.
+            try:
+                # Add a small delay
+                time.sleep(2) 
+                os.remove(variable_file_to_cleanup)
+                state.logs.append(f"Cleaned up temporary variable file: {variable_file_to_cleanup}")
+            except Exception as e:
+                state.logs.append(f"Warning: Failed to clean up temp variable file {variable_file_to_cleanup}: {e}")
+
 
         return jsonify({"status": "running", "message": "Execution started."})
 
@@ -1080,5 +1147,3 @@ def not_found_error(error):
 
 if __name__ == '__main__':
     app.run(host='127.0.0.1', port=5001, debug=True)
-
-    

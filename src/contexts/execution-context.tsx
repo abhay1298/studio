@@ -277,12 +277,20 @@ export function ExecutionProvider({ children }: { children: ReactNode }) {
     setStatus("running");
     setLastFailedLogs('');
     const startTime = Date.now();
+
+    const configForRun = { ...runConfig };
+    if (runType === 'Orchestrator') {
+        (configForRun as any).orchestratorData = {
+            headers: editedHeaders,
+            data: editedData,
+        };
+    }
   
     try {
       const runResponse = await fetch('/api/run-tests', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ runType, config: runConfig }),
+        body: JSON.stringify({ runType, config: configForRun }),
       });
   
       if (!runResponse.ok) {
@@ -374,7 +382,7 @@ export function ExecutionProvider({ children }: { children: ReactNode }) {
         description: toastDescription,
       });
     }
-  }, [addLog, getSuiteNameForRun, runConfig, saveRunToHistory, toast, logs]);
+  }, [addLog, getSuiteNameForRun, runConfig, editedData, editedHeaders, saveRunToHistory, toast, logs]);
 
   const handleStop = useCallback(async () => {
     addLog('--- Stop signal sent to process ---');
