@@ -729,6 +729,7 @@ def run_robot_tests():
         elif runType == 'By Test Case' and config.get('testcase'):
             command.extend(['-t', config['testcase']])
         elif runType == 'Orchestrator':
+            # The sorting happens before this point, now we just create the file
             variable_file_to_cleanup = create_variable_file_from_data(timestamp)
             if variable_file_to_cleanup:
                 command.extend(['--variablefile', variable_file_to_cleanup])
