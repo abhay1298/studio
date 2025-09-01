@@ -683,15 +683,25 @@ def run_robot_tests():
                     # Define the order for sorting priorities
                     priority_order = {'P0': 0, 'P1': 1, 'P2': 2, 'P3': 3}
                     
-                    # Sort the data rows based on the priority column
-                    # Unrecognized priorities are placed at the end (treated as higher index)
-                    def sort_key(row):
-                        priority_val = row[priority_index].upper()
-                        return priority_order.get(priority_val, 99)
+                    # Create a list of tuples (row, original_index) to maintain stability
+                    indexed_rows = list(enumerate(data_rows))
 
-                    data_rows.sort(key=sort_key)
-                    state.orchestrator_data['data'] = data_rows
-                    state.logs.append("Successfully sorted data by priority: P0, P1, P2, P3.")
+                    # Sort the indexed rows. The key returns a tuple for sorting:
+                    # first by priority, then by original index as a tie-breaker.
+                    def sort_key(indexed_row_tuple):
+                        original_index, row_data = indexed_row_tuple
+                        priority_val = str(row_data[priority_index]).upper()
+                        # Get the numeric priority, defaulting to a high number for unrecognized values
+                        priority_numeric = priority_order.get(priority_val, 99)
+                        return (priority_numeric, original_index)
+
+                    indexed_rows.sort(key=sort_key)
+                    
+                    # Unpack the sorted rows from the tuples
+                    sorted_data_rows = [row for index, row in indexed_rows]
+                    
+                    state.orchestrator_data['data'] = sorted_data_rows
+                    state.logs.append("Successfully sorted data by priority (P0-P3) while maintaining original order for ties.")
                 else:
                     state.logs.append("Warning: 'priority' column not found in data. Executing in original order.")
             
