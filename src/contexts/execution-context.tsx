@@ -74,15 +74,6 @@ const getInitialState = <T extends unknown>(key: string, defaultValue: T): T => 
     }
 };
 
-const readFileAsText = (file: File): Promise<string> => {
-    return new Promise((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onload = () => resolve(reader.result as string);
-        reader.onerror = () => reject(reader.error);
-        reader.readAsText(file);
-    });
-};
-
 const readFileAsArrayBuffer = (file: File): Promise<ArrayBuffer> => {
     return new Promise((resolve, reject) => {
         const reader = new FileReader();
@@ -269,7 +260,6 @@ export function ExecutionProvider({ children }: { children: ReactNode }) {
     }
   }, [runConfig, dataFileName]);
 
-
   const handleRun = useCallback(async (runType: string) => {
     let pollingInterval: NodeJS.Timeout;
     setLogs([]);
@@ -280,10 +270,11 @@ export function ExecutionProvider({ children }: { children: ReactNode }) {
 
     const configForRun = { ...runConfig };
     if (runType === 'Orchestrator') {
-        (configForRun as any).orchestratorData = {
+        const orchestratorData = {
             headers: editedHeaders,
             data: editedData,
         };
+        (configForRun as any).orchestratorData = orchestratorData;
     }
   
     try {
@@ -492,17 +483,28 @@ export function ExecutionProvider({ children }: { children: ReactNode }) {
     setProjectFileSource('local');
   
     try {
-      const formData = new FormData();
-      for (const file of Array.from(files)) {
-        formData.append('files', file, file.webkitRelativePath);
-      }
-  
       toast({
         title: 'Project Loaded',
         description: `${projectName} is now the active project. You may now scan dependencies or execute tests.`,
         action: <FileCheck2 className="text-green-500" />,
       });
-  
+      
+      // Auto-detect and load data file
+      const fileList = Array.from(files);
+      const dataFile = fileList.find(f => f.name.endsWith('.csv') || f.name.endsWith('.xlsx'));
+
+      if (dataFile) {
+        // Use a slight delay to allow the project-loaded toast to appear first
+        setTimeout(() => {
+          handleDataFileUpload(dataFile);
+          toast({
+            title: 'Data File Auto-Loaded',
+            description: `Found and loaded "${dataFile.name}" from your project folder.`,
+            action: <FileCheck2 className="text-green-500" />,
+          });
+        }, 100);
+      }
+      
       await fetchSuites();
   
     } catch (error: any) {
@@ -513,7 +515,7 @@ export function ExecutionProvider({ children }: { children: ReactNode }) {
       });
       clearProjectFile();
     }
-  }, [clearProjectFile, toast, fetchSuites]);
+  }, [clearProjectFile, toast, fetchSuites, handleDataFileUpload]);
 
   const handleGitImport = useCallback((url: string) => {
     if (!url) {
