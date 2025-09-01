@@ -153,53 +153,31 @@ export function DataFileEditor() {
 
   const handleCleanup = () => {
     const originalRowCount = editedData.length;
-    const originalColCount = editedHeaders.length;
 
-    // 1. Filter out rows that are completely empty
+    // 1. Filter out rows that are completely empty.
     const nonEmptyRows = editedData.filter(row => 
-      row.some(cell => String(cell ?? '').trim() !== '')
+      row.some(cell => cell !== null && cell !== undefined && String(cell).trim() !== '')
     );
 
-    // 2. Identify indexes of columns that are NOT empty
-    const nonEmptyColIndexes = new Set<number>();
-    for (let i = 0; i < originalColCount; i++) {
-        // A column is non-empty if the header has text...
-        if (String(editedHeaders[i] ?? '').trim() !== '') {
-            nonEmptyColIndexes.add(i);
-            continue;
-        }
-        // ...or if any cell in that column has text.
-        for (const row of nonEmptyRows) {
-            if (String(row[i] ?? '').trim() !== '') {
-                nonEmptyColIndexes.add(i);
-                break; 
-            }
-        }
+    const rowsRemoved = originalRowCount - nonEmptyRows.length;
+
+    if (rowsRemoved === 0) {
+      toast({
+        title: 'No Changes Needed',
+        description: 'No empty rows were found to clean up.',
+      });
+      return;
     }
 
-    if (nonEmptyColIndexes.size === originalColCount && nonEmptyRows.length === originalRowCount) {
-        toast({
-            title: 'No Changes Needed',
-            description: 'No empty rows or columns were found to clean up.',
-        });
-        return;
-    }
+    // 2. Update the state with only the non-empty rows. Columns are not touched.
+    updateStateAndValidate(editedHeaders, nonEmptyRows);
     
-    // 3. Rebuild headers and data from scratch using only non-empty columns
-    const newHeaders = editedHeaders.filter((_, index) => nonEmptyColIndexes.has(index));
-    const newData = nonEmptyRows.map(row => 
-      row.filter((_, index) => nonEmptyColIndexes.has(index))
-    );
-    
-    const rowsRemoved = originalRowCount - newData.length;
-    const colsRemoved = originalColCount - newHeaders.length;
-
-    updateStateAndValidate(newHeaders, newData);
     toast({
-        title: 'Cleanup Complete',
-        description: `Removed ${rowsRemoved} empty row(s) and ${colsRemoved} empty column(s).`,
+      title: 'Cleanup Complete',
+      description: `Removed ${rowsRemoved} empty row(s).`,
     });
   };
+
 
   if (!dataFileName) {
     return (
