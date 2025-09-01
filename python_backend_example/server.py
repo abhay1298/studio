@@ -663,10 +663,41 @@ def run_robot_tests():
         runType = data.get('runType')
         config = data.get('config', {})
         
-        # Store orchestrator data if provided
+        # Store and sort orchestrator data if provided
         if runType == 'Orchestrator' and 'orchestratorData' in config:
             state.orchestrator_data = config['orchestratorData']
-            state.logs.append("Received orchestrator data.")
+            state.logs.append("Received orchestrator data. Sorting by priority...")
+
+            headers = state.orchestrator_data.get('headers', [])
+            data_rows = state.orchestrator_data.get('data', [])
+            
+            try:
+                # Find the index of the 'priority' column (case-insensitive)
+                priority_index = -1
+                for i, header in enumerate(headers):
+                    if str(header).lower() == 'priority':
+                        priority_index = i
+                        break
+
+                if priority_index != -1:
+                    # Define the order for sorting priorities
+                    priority_order = {'P0': 0, 'P1': 1, 'P2': 2, 'P3': 3}
+                    
+                    # Sort the data rows based on the priority column
+                    # Unrecognized priorities are placed at the end (treated as higher index)
+                    def sort_key(row):
+                        priority_val = row[priority_index].upper()
+                        return priority_order.get(priority_val, 99)
+
+                    data_rows.sort(key=sort_key)
+                    state.orchestrator_data['data'] = data_rows
+                    state.logs.append("Successfully sorted data by priority: P0, P1, P2, P3.")
+                else:
+                    state.logs.append("Warning: 'priority' column not found in data. Executing in original order.")
+            
+            except Exception as e:
+                state.logs.append(f"Error during priority sorting: {e}. Executing in original order.")
+
         else:
             state.orchestrator_data = None
 
@@ -1147,3 +1178,5 @@ def not_found_error(error):
 
 if __name__ == '__main__':
     app.run(host='127.0.0.1', port=5001, debug=True)
+
+    
