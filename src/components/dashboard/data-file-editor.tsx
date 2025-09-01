@@ -155,27 +155,30 @@ export function DataFileEditor() {
     const originalRowCount = editedData.length;
     const originalColCount = editedHeaders.length;
 
-    // Remove empty rows
-    const nonEmptyRows = editedData.filter(row => row.some(cell => String(cell).trim() !== ''));
-    
-    // Find empty columns
-    const emptyColIndexes: Set<number> = new Set();
-    if (nonEmptyRows.length > 0) {
-        for (let i = 0; i < editedHeaders.length; i++) {
-            const isColumnEmpty = nonEmptyRows.every(row => !row[i] || String(row[i]).trim() === '');
-            const isHeaderEmpty = !editedHeaders[i] || String(editedHeaders[i]).trim() === '';
-            if (isColumnEmpty && isHeaderEmpty) {
-                emptyColIndexes.add(i);
-            }
+    // 1. Remove empty rows first
+    const nonEmptyRows = editedData.filter(row => 
+        row.some(cell => String(cell ?? '').trim() !== '')
+    );
+
+    // 2. Identify indexes of columns that are entirely empty (header included)
+    const emptyColIndexes = new Set<number>();
+    for (let i = 0; i < originalColCount; i++) {
+        const headerIsEmpty = !(editedHeaders[i] ?? '').trim();
+        const columnIsEmpty = nonEmptyRows.every(row => !(row[i] ?? '').trim());
+
+        if (headerIsEmpty && columnIsEmpty) {
+            emptyColIndexes.add(i);
         }
     }
     
-    // Filter headers and data based on empty columns
+    // 3. Filter headers and data based on the identified empty columns
     const newHeaders = editedHeaders.filter((_, index) => !emptyColIndexes.has(index));
-    const newData = nonEmptyRows.map(row => row.filter((_, index) => !emptyColIndexes.has(index)));
+    const newData = nonEmptyRows.map(row => 
+        row.filter((_, index) => !emptyColIndexes.has(index))
+    );
     
     const rowsRemoved = originalRowCount - newData.length;
-    const colsRemoved = originalColCount - newHeaders.length;
+    const colsRemoved = emptyColIndexes.size;
 
     if (rowsRemoved > 0 || colsRemoved > 0) {
       updateStateAndValidate(newHeaders, newData);
