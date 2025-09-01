@@ -1,15 +1,20 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 
+const EXECUTION_BACKEND_URL = process.env.EXECUTION_BACKEND_URL || 'http://localhost:5001';
+
+// This file is being kept for potential future use or reference,
+// but the new dependency scanning logic is handled by:
+// - /api/scan-dependencies
+// - /api/install-dependencies
+
 type DependencyStatus = {
     library: string;
     status: 'installed' | 'missing';
 };
 
 /**
- * This API route simulates checking for installed Python packages.
- * In a real application, this would likely execute a command like `pip freeze`
- * on the execution environment and compare it against the requirements.
+ * @deprecated This API route is deprecated in favor of /api/scan-dependencies which uses the live backend.
  */
 export async function POST(req: NextRequest) {
   try {
@@ -21,18 +26,13 @@ export async function POST(req: NextRequest) {
     }
 
     const requiredLibs = requirements.split('\n').filter(lib => lib.trim() !== '');
-
-    // For demonstration, we'll simulate a check.
-    // In a real scenario, you'd get the list of installed packages from your backend.
-    const installedLibs = new Set(['robotframework-requests']); // Let's pretend this one is always installed
+    const installedLibs = new Set(['robotframework-requests']); 
 
     const dependencyStatus: DependencyStatus[] = requiredLibs.map(lib => {
-      // Clean up version specifiers for the check
       const libName = lib.split('==')[0].split('>')[0].split('<')[0].trim();
       if (installedLibs.has(libName)) {
         return { library: libName, status: 'installed' };
       } else {
-        // Let's add some randomness to the simulation
         const isMissing = Math.random() > 0.5;
         return { library: libName, status: isMissing ? 'missing' : 'installed' };
       }
@@ -41,14 +41,14 @@ export async function POST(req: NextRequest) {
     return NextResponse.json(dependencyStatus);
 
   } catch (error) {
-    console.error('Error in /api/check-dependencies:', error);
+    console.error('Error in deprecated /api/check-dependencies:', error);
     const errorMessage = error instanceof Error ? error.message : String(error);
     return NextResponse.json(
       {
-        message: 'Failed to check dependencies.',
+        message: 'This endpoint is deprecated. Use /api/scan-dependencies.',
         details: errorMessage,
       },
-      { status: 500 }
+      { status: 410 }
     );
   }
 }

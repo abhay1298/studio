@@ -6,10 +6,9 @@ import JSZip from 'jszip';
 import Papa from 'papaparse';
 import * as XLSX from 'xlsx';
 import { useToast } from "@/hooks/use-toast";
-import { CheckCircle2, FileCheck2, GitBranch, XCircle, FileWarning, StopCircle } from 'lucide-react';
+import { CheckCircle2, FileCheck2, GitBranch, XCircle, FileWarning, StopCircle, Loader2 } from 'lucide-react';
 import type { TestSuite } from '@/components/dashboard/project-explorer';
-import type { DependencyStatus } from '@/components/dashboard/dependency-checker';
-
+import type { DependencyScanResult } from '@/components/dashboard/dependency-checker';
 
 type ExecutionStatus = "idle" | "running" | "success" | "failed" | "stopped";
 type RunConfig = {
@@ -20,6 +19,7 @@ type RunConfig = {
 };
 
 type TableData = (string | number)[][];
+type MissingPackage = { name: string; required_spec: string; source_file: string; raw_line: string };
 
 interface ExecutionContextType {
   status: ExecutionStatus;
@@ -31,9 +31,10 @@ interface ExecutionContextType {
   projectFileSource: 'local' | 'git' | null;
   dataFileName: string | null;
   
-  requirementsContent: string | null;
-  dependencyCheckResult: DependencyStatus[] | null;
-  isCheckingDependencies: boolean;
+  dependencyScanResult: DependencyScanResult | null;
+  isScanningDependencies: boolean;
+  isInstallingDependencies: boolean;
+  scanError: string | null;
 
   testSuites: TestSuite[];
   isLoadingSuites: boolean;
@@ -53,8 +54,8 @@ interface ExecutionContextType {
   clearProjectFile: () => void;
   handleDataFileUpload: (file: File | null) => void;
   clearDataFile: () => void;
-  checkDependencies: () => void;
-  installDependencies: () => void;
+  scanDependencies: () => void;
+  installDependencies: (packages: MissingPackage[]) => void;
 }
 
 const ExecutionContext = createContext<ExecutionContextType | undefined>(undefined);
@@ -106,9 +107,10 @@ export function ExecutionProvider({ children }: { children: ReactNode }) {
   const [projectFileSource, setProjectFileSource] = useState<'local' | 'git' | null>(null);
   const [dataFileName, setDataFileName] = useState<string | null>(null);
   
-  const [requirementsContent, setRequirementsContent] = useState<string | null>(null);
-  const [dependencyCheckResult, setDependencyCheckResult] = useState<DependencyStatus[] | null>(null);
-  const [isCheckingDependencies, setIsCheckingDependencies] = useState(false);
+  const [dependencyScanResult, setDependencyScanResult] = useState<DependencyScanResult | null>(null);
+  const [isScanningDependencies, setIsScanningDependencies] = useState(false);
+  const [isInstallingDependencies, setIsInstallingDependencies] = useState(false);
+  const [scanError, setScanError] = useState<string | null>(null);
 
 
   const [testSuites, setTestSuites] = useState<TestSuite[]>([]);
@@ -125,8 +127,7 @@ export function ExecutionProvider({ children }: { children: ReactNode }) {
     setProjectFileName(getInitialState('projectFileName', null));
     setProjectFileSource(getInitialState('projectFileSource', null));
     setDataFileName(getInitialState('dataFileName', null));
-    setRequirementsContent(getInitialState('requirementsContent', null));
-    setDependencyCheckResult(getInitialState('dependencyCheckResult', null));
+    setDependencyScanResult(getInitialState('dependencyScanResult', null));
     setEditedData(getInitialState('editedData', []));
     setEditedHeaders(getInitialState('editedHeaders', []));
     setHasHydrated(true);
@@ -138,15 +139,14 @@ export function ExecutionProvider({ children }: { children: ReactNode }) {
             sessionStorage.setItem('projectFileName', JSON.stringify(projectFileName));
             sessionStorage.setItem('projectFileSource', JSON.stringify(projectFileSource));
             sessionStorage.setItem('dataFileName', JSON.stringify(dataFileName));
-            sessionStorage.setItem('requirementsContent', JSON.stringify(requirementsContent));
             sessionStorage.setItem('editedData', JSON.stringify(editedData));
             sessionStorage.setItem('editedHeaders', JSON.stringify(editedHeaders));
-            sessionStorage.setItem('dependencyCheckResult', JSON.stringify(dependencyCheckResult));
+            sessionStorage.setItem('dependencyScanResult', JSON.stringify(dependencyScanResult));
         } catch (error) {
             console.warn(`Error writing to sessionStorage:`, error);
         }
     }
-  }, [projectFileName, projectFileSource, dataFileName, requirementsContent, editedData, editedHeaders, dependencyCheckResult, hasHydrated]);
+  }, [projectFileName, projectFileSource, dataFileName, editedData, editedHeaders, dependencyScanResult, hasHydrated]);
   
   const clearDataFile = useCallback(() => {
     setDataFileName(null);
@@ -157,8 +157,8 @@ export function ExecutionProvider({ children }: { children: ReactNode }) {
   const clearProjectFile = useCallback(() => {
     setProjectFileName(null);
     setProjectFileSource(null);
-    setRequirementsContent(null);
-    setDependencyCheckResult(null);
+    setDependencyScanResult(null);
+    setScanError(null);
     clearDataFile();
     setTestSuites([]);
     toast({ title: 'Project Cleared' });
@@ -177,11 +177,9 @@ export function ExecutionProvider({ children }: { children: ReactNode }) {
         if (!response.ok) {
             let errorMessage;
             try {
-                // Try to parse the error response as JSON
                 const errorData = await response.json();
                 errorMessage = errorData.error || `Failed to fetch suites. Status: ${response.status}`;
             } catch (e) {
-                // If JSON parsing fails, use the response text as the error
                 errorMessage = await response.text();
                 if (!errorMessage) {
                     errorMessage = `Failed to fetch suites from the backend. Status: ${response.status}`;
@@ -237,7 +235,7 @@ export function ExecutionProvider({ children }: { children: ReactNode }) {
               reportFile,
               logFile,
               videoFile,
-              rawLogs, // Save raw logs for the viewer
+              rawLogs,
           };
           const historyJSON = localStorage.getItem('robotMaestroRuns');
           let runs = [];
@@ -279,12 +277,20 @@ export function ExecutionProvider({ children }: { children: ReactNode }) {
     setStatus("running");
     setLastFailedLogs('');
     const startTime = Date.now();
+
+    const configForRun = { ...runConfig };
+    if (runType === 'Orchestrator') {
+        (configForRun as any).orchestratorData = {
+            headers: editedHeaders,
+            data: editedData,
+        };
+    }
   
     try {
       const runResponse = await fetch('/api/run-tests', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ runType, config: runConfig }),
+        body: JSON.stringify({ runType, config: configForRun }),
       });
   
       if (!runResponse.ok) {
@@ -376,7 +382,7 @@ export function ExecutionProvider({ children }: { children: ReactNode }) {
         description: toastDescription,
       });
     }
-  }, [addLog, getSuiteNameForRun, runConfig, saveRunToHistory, toast, logs]);
+  }, [addLog, getSuiteNameForRun, runConfig, editedData, editedHeaders, saveRunToHistory, toast, logs]);
 
   const handleStop = useCallback(async () => {
     addLog('--- Stop signal sent to process ---');
@@ -388,7 +394,6 @@ export function ExecutionProvider({ children }: { children: ReactNode }) {
         }
         const result = await response.json();
         addLog(result.message);
-        // The polling interval will handle the status change to "stopped"
         toast({
             title: "Stop Signal Sent",
             description: "The test run will be terminated.",
@@ -396,8 +401,6 @@ export function ExecutionProvider({ children }: { children: ReactNode }) {
 
     } catch (e: any) {
         addLog(`Failed to send stop signal: ${e.message}`);
-        // We don't set status to failed, as the run might just have finished.
-        // Polling will determine the final state.
         toast({
             variant: "destructive",
             title: "Stop Failed",
@@ -490,36 +493,13 @@ export function ExecutionProvider({ children }: { children: ReactNode }) {
   
     try {
       const formData = new FormData();
-      let requirementsFile: File | null = null;
-      let dataFile: File | null = null;
-
       for (const file of Array.from(files)) {
         formData.append('files', file, file.webkitRelativePath);
-        if (file.name.toLowerCase() === 'requirements.txt') {
-          requirementsFile = file;
-        }
-        if ((file.name.toLowerCase().endsWith('.csv') || file.name.toLowerCase().endsWith('.xlsx')) && !dataFileName) {
-            dataFile = file;
-        }
       }
   
-      if (requirementsFile) {
-        const content = await readFileAsText(requirementsFile);
-        setRequirementsContent(content);
-      } else {
-        toast({ title: 'Info', description: `requirements.txt not found in the project.` });
-      }
-
-      if (dataFile) {
-        await handleDataFileUpload(dataFile);
-      }
-  
-      // This is a placeholder for actual folder upload to backend.
-      // In a real scenario, you'd send formData to the backend.
-      // For this app, we assume the backend has the folder.
       toast({
         title: 'Project Loaded',
-        description: `${projectName} is now the active project.`,
+        description: `${projectName} is now the active project. You may now scan dependencies or execute tests.`,
         action: <FileCheck2 className="text-green-500" />,
       });
   
@@ -533,7 +513,7 @@ export function ExecutionProvider({ children }: { children: ReactNode }) {
       });
       clearProjectFile();
     }
-  }, [clearProjectFile, toast, fetchSuites, dataFileName, handleDataFileUpload]);
+  }, [clearProjectFile, toast, fetchSuites]);
 
   const handleGitImport = useCallback((url: string) => {
     if (!url) {
@@ -547,70 +527,92 @@ export function ExecutionProvider({ children }: { children: ReactNode }) {
     setProjectFileName(repoName);
     setProjectFileSource('git');
 
-    const dummyReqs = 'robotframework\nrequests\nselenium';
-    const dummyCsv = 'id,priority,testcase\n1,high,User can login';
-
-    setRequirementsContent(dummyReqs);
-    setDataFileName('data.csv');
-    parseAndSetDataFile(dummyCsv, 'data.csv');
-
     toast({
         title: 'Project Imported',
         description: `Simulated import of "${repoName}".`,
         action: <GitBranch className="text-primary" />,
     });
     fetchSuites();
-  }, [toast, parseAndSetDataFile, clearProjectFile, fetchSuites]);
+  }, [toast, clearProjectFile, fetchSuites]);
 
-  const checkDependencies = useCallback(async () => {
-    if (!requirementsContent) {
-        toast({
-            variant: 'destructive',
-            title: 'No requirements.txt found',
-            description: 'Cannot check dependencies because no requirements.txt was found in the project.',
-        });
-        setDependencyCheckResult(null);
-        return;
-    }
-    setIsCheckingDependencies(true);
-    setDependencyCheckResult(null);
+  const scanDependencies = useCallback(async () => {
+    setIsScanningDependencies(true);
+    setScanError(null);
+    setDependencyScanResult(null);
     try {
-      const response = await fetch('/api/check-dependencies', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ requirements: requirementsContent }),
-      });
-      if (!response.ok) throw new Error('Failed to check dependencies.');
+      const response = await fetch('/api/scan-dependencies');
+      const result: DependencyScanResult = await response.json();
 
-      const result: DependencyStatus[] = await response.json();
-      setDependencyCheckResult(result);
-    } catch (error) {
-      toast({ variant: 'destructive', title: 'Error', description: 'Could not connect to the dependency checker service.' });
-      setDependencyCheckResult(null);
+      if (!response.ok || result.status === 'error') {
+        throw new Error(result.errors?.[0] || 'Failed to scan dependencies on the backend.');
+      }
+      setDependencyScanResult(result);
+      
+    } catch (error: any) {
+      setScanError(error.message || 'Could not connect to the dependency scanner service.');
     } finally {
-        setIsCheckingDependencies(false);
+      setIsScanningDependencies(false);
     }
-  }, [requirementsContent, toast]);
+  }, []);
   
-  const installDependencies = useCallback(() => {
-    if (!dependencyCheckResult) return;
+  const installDependencies = useCallback((packages: MissingPackage[]) => {
+    if (!packages || packages.length === 0) return;
     
-    toast({
-        title: 'Installation in Progress',
-        description: 'Simulating installation of missing packages...',
-    });
-    
-    setTimeout(() => {
-        const newStatuses = dependencyCheckResult.map(d => ({ ...d, status: 'installed' as 'installed' }));
-        setDependencyCheckResult(newStatuses);
-        toast({
-            title: 'Installation Complete',
-            description: 'All missing libraries have been "installed".',
-            action: <CheckCircle2 className="text-green-500" />
-        });
-    }, 2000);
-  }, [dependencyCheckResult, toast]);
+    setIsInstallingDependencies(true);
+    let pollingInterval: NodeJS.Timeout;
 
+    const startInstallation = async () => {
+        try {
+            const response = await fetch('/api/install-dependencies', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ missing_packages: packages }),
+            });
+            const data = await response.json();
+            if (!response.ok) throw new Error(data.message || 'Failed to start installation');
+
+            // Start polling for logs
+            pollingInterval = setInterval(async () => {
+                const statusRes = await fetch('/api/status');
+                const statusData = await statusRes.json();
+                if (statusData.logs) {
+                    setLogs(statusData.logs);
+                }
+                if (statusData.status !== 'running') {
+                    clearInterval(pollingInterval);
+                    setIsInstallingDependencies(false);
+                    if (statusData.status === 'success') {
+                        toast({
+                            title: 'Installation Complete',
+                            description: 'All missing packages have been installed. Please scan again to verify.',
+                            action: <CheckCircle2 className="text-green-500" />
+                        });
+                        await scanDependencies();
+                    } else {
+                        toast({
+                            variant: 'destructive',
+                            title: 'Installation Failed',
+                            description: 'Check the execution logs for more details.',
+                        });
+                    }
+                }
+            }, 2000);
+
+        } catch (e: any) {
+            toast({ variant: 'destructive', title: 'Installation Error', description: e.message });
+            setIsInstallingDependencies(false);
+        }
+    };
+
+    toast({
+        title: 'Starting Installation...',
+        description: `Attempting to install ${packages.length} package(s).`,
+        action: <Loader2 className="animate-spin" />,
+    });
+
+    startInstallation();
+
+  }, [toast, scanDependencies]);
   
   const value = {
     status,
@@ -620,9 +622,10 @@ export function ExecutionProvider({ children }: { children: ReactNode }) {
     projectFileName,
     projectFileSource,
     dataFileName,
-    requirementsContent,
-    dependencyCheckResult,
-    isCheckingDependencies,
+    dependencyScanResult,
+    isScanningDependencies,
+    isInstallingDependencies,
+    scanError,
     testSuites,
     isLoadingSuites,
     suiteLoadError,
@@ -641,7 +644,7 @@ export function ExecutionProvider({ children }: { children: ReactNode }) {
     clearProjectFile,
     handleDataFileUpload,
     clearDataFile,
-    checkDependencies,
+    scanDependencies,
     installDependencies,
   };
 
