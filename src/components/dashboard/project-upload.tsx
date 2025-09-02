@@ -200,4 +200,7 @@ export function ProjectUpload({
             </Button>
           </CardFooter>
         )}
-      </
+      </Card>
+    </div>
+  );
+}
