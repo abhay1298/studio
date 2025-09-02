@@ -1,7 +1,7 @@
 
 "use client";
 
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { ProjectExplorer as ProjectExplorerComponent } from '@/components/dashboard/project-explorer';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { ServerCrash, RefreshCw } from 'lucide-react';
@@ -55,3 +55,5 @@ export default function ProjectExplorerPage() {
     </div>
   );
 }
+
+    
