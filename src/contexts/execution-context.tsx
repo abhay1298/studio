@@ -74,7 +74,7 @@ export function ExecutionProvider({ children }: { children: ReactNode }) {
   const [dataFileName, setDataFileName] = useState<string | null>(null);
   
   const [testSuites, setTestSuites] = useState<TestSuite[]>([]);
-  const [isLoadingSuites, setIsLoadingSuites] = useState(false);
+  const [isLoadingSuites, setIsLoadingSuites] = useState(true);
   const [suiteLoadError, setSuiteLoadError] = useState<string | null>(null);
 
   const [editedData, setEditedData] = useState<TableData>([]);
