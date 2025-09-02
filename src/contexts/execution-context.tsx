@@ -150,7 +150,6 @@ export function ExecutionProvider({ children }: { children: ReactNode }) {
 
   const { toast } = useToast();
   
-  // This is defined here because fetchDirectoryStatus needs it.
   const fetchSuites = useCallback(async () => {
     setIsLoadingSuites(true);
     setSuiteLoadError(null);
@@ -262,9 +261,9 @@ export function ExecutionProvider({ children }: { children: ReactNode }) {
     setProjectFileName(getInitialState('projectFileName', null));
     setProjectFileSource(getInitialState('projectFileSource', null));
     setDataFileName(getInitialState('dataFileName', null));
-    setDependencyScanResult(getInitialState('dependencyScanResult', null));
     setEditedData(getInitialState('editedData', []));
     setEditedHeaders(getInitialState('editedHeaders', []));
+    setDependencyScanResult(getInitialState('dependencyScanResult', null));
     setHasHydrated(true);
 
     fetchDirectoryStatus();
