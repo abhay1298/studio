@@ -23,7 +23,6 @@ type MissingPackage = { name: string; required_spec: string; source_file: string
 type ProjectFileSource = 'local' | 'git' | null;
 
 export type DirectoryStatus = {
-  status: 'success' | 'error';
   configured: boolean;
   directory?: string;
   robot_file_count?: number;
@@ -193,7 +192,6 @@ export function ExecutionProvider({ children }: { children: ReactNode }) {
         }
     } catch (e) {
         setDirectoryStatus({
-            status: 'error',
             configured: false,
             message: 'Failed to connect to the backend server to get directory status.'
         })
@@ -736,5 +734,3 @@ export function useExecutionContext() {
   }
   return context;
 }
-
-    
