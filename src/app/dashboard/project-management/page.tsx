@@ -1,9 +1,9 @@
 
+
 "use client";
 
 import { DependencyChecker } from "@/components/dashboard/dependency-checker";
 import { ProjectUpload } from "@/components/dashboard/project-upload";
-import { TestDirectoryConfigurator } from "@/components/dashboard/test-directory-configurator";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { useExecutionContext } from "@/contexts/execution-context";
 
@@ -12,10 +12,6 @@ export default function ProjectManagementPage() {
     dataFileName,
     handleDataFileUpload,
     clearDataFile,
-    handleProjectFileUpload,
-    clearProjectFile,
-    projectFileName,
-    projectFileSource,
   } = useExecutionContext();
 
   return (
@@ -24,25 +20,19 @@ export default function ProjectManagementPage() {
         Project Management
       </h1>
       
-      <ProjectUpload 
-        onProjectFileChange={handleProjectFileUpload}
-        onDataFileChange={handleDataFileUpload}
-        onClearProjectFile={clearProjectFile}
-        onClearDataFile={clearDataFile}
-        projectFileName={projectFileName}
-        projectFileSource={projectFileSource}
-        dataFileName={dataFileName}
-      />
-
       <Card>
         <CardHeader>
-          <CardTitle className="font-headline">Test Directory Configuration</CardTitle>
+          <CardTitle className="font-headline">File Upload</CardTitle>
           <CardDescription>
-            Verify the active test directory on the backend server. Use the "Discover" button to switch between different test folders within your uploaded project.
+            Upload a CSV or Excel file for data-driven testing with the Orchestrator.
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <TestDirectoryConfigurator />
+          <ProjectUpload 
+            onFileChange={handleDataFileUpload}
+            onClear={clearDataFile}
+            fileName={dataFileName}
+          />
         </CardContent>
       </Card>
 

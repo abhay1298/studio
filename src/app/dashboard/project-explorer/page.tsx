@@ -15,14 +15,11 @@ export default function ProjectExplorerPage() {
     isLoadingSuites, 
     suiteLoadError, 
     fetchSuites,
-    directoryStatus,
   } = useExecutionContext();
 
   useEffect(() => {
-    if (directoryStatus?.configured) {
-      fetchSuites();
-    }
-  }, [fetchSuites, directoryStatus]);
+    fetchSuites();
+  }, [fetchSuites]);
 
   return (
     <div className="space-y-6">
@@ -43,7 +40,7 @@ export default function ProjectExplorerPage() {
                     <AlertTitle>Could Not Load Project</AlertTitle>
                     <AlertDescription>
                         <p>{suiteLoadError}</p>
-                        <p className="mt-2 text-xs">Please ensure the Python backend server is running and a valid test directory is configured on the Project Configuration page.</p>
+                        <p className="mt-2 text-xs">Please ensure the Python backend server is running and the `TESTS_DIRECTORY` variable in `server.py` is correctly configured.</p>
                     </AlertDescription>
                     <Button variant="secondary" size="sm" onClick={fetchSuites} className="mt-4">
                       <RefreshCw className="mr-2 h-4 w-4"/>

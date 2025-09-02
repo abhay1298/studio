@@ -22,7 +22,6 @@ import { Button } from '@/components/ui/button';
 import { ArrowUpRight, Ban } from 'lucide-react';
 import Link from 'next/link';
 import { Skeleton } from '@/components/ui/skeleton';
-import { useExecutionContext } from '@/contexts/execution-context';
 
 type RecentRun = {
   suite: string;
@@ -32,7 +31,6 @@ type RecentRun = {
 };
 
 export default function DashboardPage() {
-  const { projectFileName, projectFileSource, hasHydrated } = useExecutionContext();
   const [recentRuns, setRecentRuns] = useState<RecentRun[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   
@@ -40,6 +38,7 @@ export default function DashboardPage() {
     totalRuns: 0,
     passRate: 'N/A',
     avgDuration: '--',
+    activeProject: 'Not Configured'
   });
   
   const loadRunHistory = () => {
@@ -94,19 +93,6 @@ export default function DashboardPage() {
     };
   }, []);
 
-  const getDisplayProjectName = () => {
-    if (!projectFileName) {
-      return 'Not Configured';
-    }
-    if (projectFileSource === 'local') {
-      // For local uploads, projectFileName is often a path like `my-project/tests/test.robot`
-      // We just want the root folder `my-project`.
-      const parts = projectFileName.split('/');
-      return parts[0] || projectFileName;
-    }
-    return projectFileName;
-  }
-
   return (
     <div className="grid gap-4 md:gap-8">
         <div className="grid gap-4 sm:grid-cols-2 md:grid-cols-4">
@@ -146,9 +132,7 @@ export default function DashboardPage() {
           <Card>
             <CardHeader className="pb-2">
               <CardDescription>Active Project</CardDescription>
-               <CardTitle className="font-headline text-3xl truncate" title={!hasHydrated ? 'Loading...' : (projectFileName || 'Not Configured')}>
-                 {!hasHydrated ? <Skeleton className="w-40 h-8" /> : getDisplayProjectName()}
-              </CardTitle>
+              <CardTitle className="font-headline text-3xl">My Project</CardTitle>
             </CardHeader>
             <CardContent>
               <div className="text-xs text-muted-foreground">

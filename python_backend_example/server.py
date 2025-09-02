@@ -17,41 +17,21 @@ import re
 from threading import Thread
 from collections import deque
 import json
-from pathlib import Path
-import logging
-
-# Configure logging
-logging.basicConfig(filename='robot_maestro.log', level=logging.INFO, 
-                   format='%(asctime)s - %(levelname)s - %(message)s')
 
 app = Flask(__name__)
 CORS(app)
 
 # --- Configuration ---
+# IMPORTANT: This is the path to your Robot Framework project folder.
+# You MUST change this to the absolute path of your test directory.
+# Example for Windows: TESTS_DIRECTORY = 'C:\\Users\\YourUser\\Documents\\robot-projects\\my-project'
+# Example for macOS/Linux: TESTS_DIRECTORY = '/home/user/robot-projects/my-project'
+TESTS_DIRECTORY = None  # <-- CHANGE THIS
+
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
-
-# IMPORTANT: You MUST change this path to the ABSOLUTE path of your Robot Framework project folder.
-# This is the directory that contains your .robot files.
-# Example for Windows: TESTS_DIRECTORY = 'C:/Users/YourUser/Documents/RobotMaestro/tests'
-# Example for macOS/Linux: TESTS_DIRECTORY = '/Users/YourUser/Documents/RobotMaestro/tests'
-TESTS_DIRECTORY = 'C:/Users/c-aku/gitlab_primecentre/qa-automation-hub-robot-framework/primecenter_automation/tests' # A default example path
-
-if not os.path.exists(TESTS_DIRECTORY):
-    print("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
-    print("!!! WARNING: `TESTS_DIRECTORY` does not exist.       !!!")
-    print(f"!!! Default path set to: {TESTS_DIRECTORY}")
-    print("!!! Please edit `server.py` and set this variable.   !!!")
-    print("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
-
-
-# Use an absolute path for the reports directory to ensure it's always found.
 REPORTS_DIR = os.path.join(SCRIPT_DIR, 'reports_archive')
-CONFIG_FILE = os.path.join(SCRIPT_DIR, 'robot_maestro_config.json')
-TESTS_DIRECTORY = None # This will be set dynamically
-
-# --- Setup Directories ---
-os.makedirs(PROJECTS_DIR, exist_ok=True)
-os.makedirs(REPORTS_DIR, exist_ok=True)
+if not os.path.exists(REPORTS_DIR):
+    os.makedirs(REPORTS_DIR)
 
 
 # --- Global State ---
@@ -74,60 +54,6 @@ class ExecutionState:
 state = ExecutionState()
 
 # --- Utility Functions ---
-
-def load_config():
-    """Loads the active test directory from the config file."""
-    global TESTS_DIRECTORY
-    if not os.path.exists(CONFIG_FILE):
-        logging.info("Config file not found. No test directory loaded at startup.")
-        TESTS_DIRECTORY = None
-        return
-
-    try:
-        with open(CONFIG_FILE, 'r') as f:
-            config = json.load(f)
-        
-        test_dir = config.get('test_directory')
-        if test_dir and os.path.isdir(test_dir):
-            TESTS_DIRECTORY = test_dir
-            logging.info(f"Loaded test directory from config: {TESTS_DIRECTORY}")
-        else:
-            logging.warning(f"Configured test directory not found: {test_dir}")
-            TESTS_DIRECTORY = None
-    except (json.JSONDecodeError, KeyError) as e:
-        logging.error(f"Error loading config file: {e}")
-        TESTS_DIRECTORY = None
-
-def save_config():
-    """Saves the current test directory to the config file."""
-    config = {'test_directory': TESTS_DIRECTORY}
-    try:
-        with open(CONFIG_FILE, 'w') as f:
-            json.dump(config, f, indent=2)
-        logging.info(f"Saved test directory to config: {TESTS_DIRECTORY}")
-    except Exception as e:
-        logging.error(f"Could not save config file: {e}")
-
-def find_test_directory_in_project(project_path):
-    """Finds the most likely test directory within a given project path."""
-    common_test_dirs = ['tests', 'test', 'robot', 'robot_tests', 'automation', 'suites', 'qa']
-    
-    # First, look for common directory names
-    for dir_name in common_test_dirs:
-        potential_path = os.path.join(project_path, dir_name)
-        if os.path.isdir(potential_path) and any(f.endswith('.robot') for f in os.listdir(potential_path)):
-            logging.info(f"Found test directory by common name: {potential_path}")
-            return potential_path
-
-    # If not found, do a broader search for any directory containing .robot files
-    for root, _, files in os.walk(project_path):
-        if any(f.endswith('.robot') for f in files):
-            logging.info(f"Found test directory by file search: {root}")
-            return root
-            
-    logging.warning(f"Could not find a test directory in {project_path}")
-    return project_path # Fallback to the project root
-
 def parse_robot_file(file_path):
     test_cases = []
     in_test_cases_section = False
@@ -143,85 +69,140 @@ def parse_robot_file(file_path):
                     continue
                 if in_test_cases_section and stripped_line and not stripped_line.startswith('#') and not stripped_line.startswith('[') and not line.startswith((' ', '\t')):
                     test_cases.append(stripped_line)
-        logging.debug(f"Parsed {len(test_cases)} test cases from {file_path}")
     except Exception as e:
-        logging.error(f"Could not parse file {file_path}: {e}")
+        print(f"Could not parse file {file_path}: {e}")
     return test_cases
 
 def get_installed_packages():
-    try:
-        packages = {pkg.project_name.lower(): pkg.version for pkg in pkg_resources.working_set}
-        logging.debug(f"Found {len(packages)} installed packages")
-        return packages
-    except Exception as e:
-        logging.error(f"Error getting installed packages: {e}")
-        return {}
+    return {pkg.project_name.lower(): pkg.version for pkg in pkg_resources.working_set}
 
 def parse_requirements_file(requirements_path):
     if not os.path.exists(requirements_path):
-        logging.warning(f"Requirements file not found: {requirements_path}")
         return {}
     
     required_packages = {}
-    try:
-        with open(requirements_path, 'r', encoding='utf-8') as f:
-            for line in f:
-                line = line.strip()
-                if not line or line.startswith('#') or line.startswith('-e') or line.startswith('git+'):
-                    continue
-                
-                if '#' in line:
-                    line = line.split('#')[0].strip()
-                
-                match = re.match(r'^([a-zA-Z0-9_-]+)([><=!~]+.*)?$', line)
-                if match:
-                    package_name = match.group(1).lower()
-                    version_spec = match.group(2) if match.group(2) else None
-                    required_packages[package_name] = {
-                        'name': package_name,
-                        'version_spec': version_spec,
-                        'raw_line': line
-                    }
-        logging.debug(f"Parsed {len(required_packages)} packages from {requirements_path}")
-    except Exception as e:
-        logging.error(f"Error parsing requirements file {requirements_path}: {e}")
+    with open(requirements_path, 'r', encoding='utf-8') as f:
+        for line in f:
+            line = line.strip()
+            if not line or line.startswith('#') or line.startswith('-e') or line.startswith('git+'):
+                continue
+            
+            # Remove comments
+            if '#' in line:
+                line = line.split('#')[0].strip()
+            
+            # Simple parsing for package name
+            match = re.match(r'^([a-zA-Z0-9_-]+)', line)
+            if match:
+                package_name = match.group(1).lower()
+                required_packages[package_name] = line # Store the full line for installation
     
     return required_packages
 
 def find_requirements_files(search_directory):
     requirements_files = []
-    if not search_directory or not os.path.isdir(search_directory):
-        return []
     for root, dirs, files in os.walk(search_directory):
         for file in files:
             if file.lower() in ['requirements.txt', 'requirements-dev.txt', 'requirements-test.txt']:
                 requirements_files.append(os.path.join(root, file))
-    logging.debug(f"Found {len(requirements_files)} requirements files in {search_directory}")
     return requirements_files
 
-def check_version_compatibility(installed_version, version_spec):
-    if not version_spec:
-        return True
+def scan_dependencies():
+    result = {
+        'status': 'success',
+        'installed_packages_count': 0,
+        'requirements_files': [],
+        'missing_packages': [],
+        'suggestions': [],
+        'errors': []
+    }
     
     try:
-        from packaging import version, specifiers
-        spec = specifiers.SpecifierSet(version_spec)
-        return version.parse(installed_version) in spec
-    except ImportError:
-        if version_spec.startswith('=='):
-            return installed_version == version_spec[2:]
-        return True
+        installed_packages = get_installed_packages()
+        result['installed_packages_count'] = len(installed_packages)
+        
+        project_root = os.path.dirname(os.path.abspath(TESTS_DIRECTORY)) if TESTS_DIRECTORY else SCRIPT_DIR
+        requirements_files = find_requirements_files(project_root)
+        # Also check the script's directory for good measure
+        requirements_files.extend(find_requirements_files(SCRIPT_DIR))
+        requirements_files = list(set(requirements_files)) # Remove duplicates
+        result['requirements_files'] = requirements_files
+        
+        if not requirements_files:
+            result['suggestions'].append("No requirements.txt files found")
+            return result
+        
+        all_required_packages = {}
+        for req_file in requirements_files:
+            required_packages = parse_requirements_file(req_file)
+            for pkg_name, raw_line in required_packages.items():
+                if pkg_name not in all_required_packages:
+                    all_required_packages[pkg_name] = {'raw_line': raw_line, 'source_file': req_file}
+        
+        missing_packages_list = []
+        for pkg_name, pkg_info in all_required_packages.items():
+            if pkg_name not in installed_packages:
+                missing_packages_list.append(pkg_info)
+        
+        result['missing_packages'] = missing_packages_list
+        if not missing_packages_list:
+            result['suggestions'].append("All dependencies satisfied")
+    
     except Exception as e:
-        logging.error(f"Error checking version compatibility: {e}")
-        return True
+        result['status'] = 'error'
+        result['errors'].append(f"Error during scan: {str(e)}")
+    
+    return result
+
+def install_missing_dependencies_thread(missing_packages):
+    global state
+    
+    try:
+        state.logs.append("Starting dependency installation...")
+        
+        for i, pkg_info in enumerate(missing_packages, 1):
+            pkg_line = pkg_info['raw_line']
+            state.logs.append(f"Installing [{i}/{len(missing_packages)}]: {pkg_line}")
+            
+            # Use subprocess to run pip install
+            process = subprocess.Popen(
+                ['pip', 'install', pkg_line],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                text=True,
+                encoding='utf-8',
+                errors='replace'
+            )
+            
+            # Stream output to logs
+            for line in iter(process.stdout.readline, ''):
+                if line.strip():
+                    state.logs.append(f"  {line.strip()}")
+            
+            return_code = process.wait()
+            
+            if return_code == 0:
+                state.logs.append(f"  ✓ Successfully installed: {pkg_info['raw_line']}")
+            else:
+                state.logs.append(f"  ✗ Failed to install: {pkg_info['raw_line']}")
+        
+        state.logs.append("Dependency installation completed")
+        state.status = 'success'
+        
+    except Exception as e:
+        state.logs.append(f"Error during installation: {str(e)}")
+        state.status = 'failed'
+    finally:
+        state.process = None
+
 
 def find_video_in_dir(directory):
+    """Finds the most recently modified video file in a directory."""
     video_extensions = ('.mp4', '.webm', '.avi', '.mov')
     latest_video = None
     latest_time = 0
 
     if not os.path.isdir(directory):
-        logging.warning(f"Video directory not found: {directory}")
         return None
 
     for root, _, files in os.walk(directory):
@@ -232,30 +213,29 @@ def find_video_in_dir(directory):
                 if mod_time > latest_time:
                     latest_time = mod_time
                     latest_video = file_path
-    if latest_video:
-        logging.debug(f"Found video file: {latest_video}")
     return latest_video
 
 def parse_test_statistics_from_xml(output_dir):
+    """Parses pass/fail counts from Robot's output.xml."""
     output_xml_path = os.path.join(output_dir, 'output.xml')
     
     if not os.path.exists(output_xml_path):
-        logging.warning(f"output.xml not found in {output_dir}")
         return 0, 0
     
     try:
         tree = ET.parse(output_xml_path)
         root = tree.getroot()
         
+        # Method 1: Look for the <statistics> tag (more reliable)
         for statistics in root.findall('.//statistics'):
             for total in statistics.findall('.//total'):
                 for stat in total.findall('stat'):
                     if stat.get('id') == 'All Tests':
                         pass_count = int(stat.get('pass', 0))
                         fail_count = int(stat.get('fail', 0))
-                        logging.debug(f"Parsed stats from XML: {pass_count} passed, {fail_count} failed")
                         return pass_count, fail_count
         
+        # Method 2: Fallback by counting test statuses (less reliable)
         pass_count = fail_count = 0
         for test in root.findall('.//test'):
             status = test.find('status')
@@ -265,24 +245,20 @@ def parse_test_statistics_from_xml(output_dir):
                 elif status.get('status') == 'FAIL':
                     fail_count += 1
         
-        logging.debug(f"Parsed stats from XML (test loop): {pass_count} passed, {fail_count} failed")
         return pass_count, fail_count
         
     except Exception as e:
         state.logs.append(f"Error parsing output.xml: {e}")
-        logging.error(f"Error parsing output.xml: {e}")
         return 0, 0
 
 def create_variable_file_from_data(timestamp):
     if not state.orchestrator_data:
-        logging.debug("No orchestrator data provided")
         return None
 
     headers = state.orchestrator_data.get('headers', [])
     data_rows = state.orchestrator_data.get('data', [])
 
     if not headers or not data_rows:
-        logging.warning("Invalid orchestrator data: empty headers or data rows")
         return None
 
     var_file_path = os.path.join(tempfile.gettempdir(), f'orchestrator_vars_{timestamp}.py')
@@ -290,26 +266,31 @@ def create_variable_file_from_data(timestamp):
     with open(var_file_path, 'w', encoding='utf-8') as f:
         f.write("# Auto-generated variable file\n\n")
         
+        # Create simple variables from the first row of data
         first_row = data_rows[0]
         for i, header in enumerate(headers):
+            # Sanitize header to create a valid variable name
             var_name = re.sub(r'\W|^(?=\d)', '_', header)
             value = first_row[i] if i < len(first_row) else ""
             f.write(f"{var_name} = {json.dumps(value)}\n")
             
+        # Create a list of dictionaries for all data rows
         f.write("\nORCHESTRATOR_DATA = [\n")
         for row in data_rows:
             row_dict = {re.sub(r'\W|^(?=\d)', '_', headers[i]): (row[i] if i < len(row) else "") for i in range(len(headers))}
             f.write(f"    {json.dumps(row_dict)},\n")
         f.write("]\n")
     
-    logging.debug(f"Created variable file: {var_file_path}")
     return var_file_path
 
-def run_robot_in_thread(command, output_dir, timestamp, project_dir):
+
+def run_robot_in_thread(command, output_dir, timestamp):
     global state
     output_dir = os.path.abspath(output_dir)
 
     try:
+        # Use CREATE_NEW_PROCESS_GROUP on Windows and os.setsid on Unix-like
+        # systems to allow for proper termination of the process tree.
         creation_flags = subprocess.CREATE_NEW_PROCESS_GROUP if os.name == 'nt' else 0
         preexec_fn = os.setsid if os.name != 'nt' else None
 
@@ -321,21 +302,18 @@ def run_robot_in_thread(command, output_dir, timestamp, project_dir):
             encoding='utf-8',
             errors='replace',
             creationflags=creation_flags,
-            preexec_fn=preexec_fn,
-            cwd=project_dir  # Run the command from the project directory
+            preexec_fn=preexec_fn
         )
 
         for line in iter(state.process.stdout.readline, ''):
             if line.strip():
                 state.logs.append(line.strip())
-                logging.debug(f"Robot output: {line.strip()}")
 
         state.process.stdout.close()
         state.return_code = state.process.wait()
 
         if state.status == "stopped":
             state.logs.append("Execution was manually stopped.")
-            logging.info("Execution was manually stopped")
             return
 
         # Parse test statistics
@@ -353,15 +331,14 @@ def run_robot_in_thread(command, output_dir, timestamp, project_dir):
                         archived_name = f"report-{timestamp}.html"
                         shutil.move(temp_file_path, os.path.join(REPORTS_DIR, archived_name))
                         state.report_file = archived_name
-                        logging.debug(f"Archived report: {archived_name}")
                     elif f.lower() == 'log.html':
                         archived_name = f"log-{timestamp}.html"
                         shutil.move(temp_file_path, os.path.join(REPORTS_DIR, archived_name))
                         state.log_file = archived_name
-                        logging.debug(f"Archived log: {archived_name}")
 
-            # Archive video
-            video_search_dir = os.path.join(project_dir, 'Execution_Videos')
+            # Archive video if one was created
+            project_root = os.path.dirname(os.path.abspath(TESTS_DIRECTORY))
+            video_search_dir = os.path.join(project_root, 'Execution_Videos')
             
             new_video_path = find_video_in_dir(video_search_dir)
             if new_video_path:
@@ -369,115 +346,63 @@ def run_robot_in_thread(command, output_dir, timestamp, project_dir):
                 archived_video_name = f"video-{timestamp}{video_ext}"
                 shutil.move(new_video_path, os.path.join(REPORTS_DIR, archived_video_name))
                 state.video_file = archived_video_name
-                logging.debug(f"Archived video: {archived_video_name}")
 
         except Exception as e:
-            state.logs.append(f"Error archiving: {e}")
-            logging.error(f"Error archiving: {e}")
+            state.logs.append(f"Error archiving reports/video: {e}")
 
         state.status = 'success' if state.return_code == 0 else 'failed'
-        logging.info(f"Execution completed with status: {state.status}")
 
     except FileNotFoundError:
-        state.logs.append("ERROR: 'robot' command not found. Install Robot Framework.")
-        logging.error("ERROR: 'robot' command not found")
+        state.logs.append("ERROR: 'robot' command not found. Is Robot Framework installed and in your system's PATH?")
         state.status = "failed"
     except Exception as e:
-        state.logs.append(f"Error in execution: {e}")
-        logging.error(f"Error in execution: {e}")
+        state.logs.append(f"An unexpected error occurred in the execution thread: {e}")
+        # Ensure status is not left as "running" on unexpected errors
         if state.status == "running":
             state.status = "failed"
     finally:
         state.process = None
+        # Clean up the temporary output directory
         if os.path.exists(output_dir):
             try:
                 shutil.rmtree(output_dir)
-                logging.debug(f"Cleaned up temporary output directory: {output_dir}")
             except Exception as e:
-                logging.error(f"Error cleaning up output directory: {e}")
+                print(f"Error cleaning up temp output directory: {e}")
 
 def find_matching_report_file(requested_filename, reports_dir):
+    """Finds the actual report file, handling dynamic timestamps."""
+    # Clean fragment identifiers and query params
     clean_requested = requested_filename.split('#')[0].split('?')[0]
     
+    # Direct match
     if os.path.exists(os.path.join(reports_dir, clean_requested)):
-        logging.debug(f"Found report file: {clean_requested}")
         return clean_requested
     
+    # If a generic 'log.html' or 'report.html' is requested, find the latest one
     if clean_requested.lower() in ['log.html', 'report.html']:
         file_type = 'log' if clean_requested.lower() == 'log.html' else 'report'
         
         try:
+            # Find all files of that type, e.g., 'log-20230101-120000.html'
             matching_files = []
             for f in os.listdir(reports_dir):
                 if f.lower().startswith(f'{file_type}-') and f.lower().endswith('.html'):
                     matching_files.append((f, os.path.getmtime(os.path.join(reports_dir, f))))
             
             if matching_files:
+                # Sort by modification time, newest first
                 matching_files.sort(key=lambda x: x[1], reverse=True)
-                logging.debug(f"Found matching report file: {matching_files[0][0]}")
                 return matching_files[0][0]
         except Exception as e:
-            logging.error(f"Error finding matching report file: {e}")
+            print(f"Error finding matching report file: {e}")
     
     return None
 
 # --- API Endpoints ---
-
-@app.route('/upload-project', methods=['POST'])
-def upload_project():
-    global TESTS_DIRECTORY
-    if 'files' not in request.files:
-        return jsonify({'error': 'No file part in the request'}), 400
-
-    files = request.files.getlist('files')
-    relative_paths = request.form.getlist('relativePaths')
-
-    if not files or not relative_paths or len(files) != len(relative_paths):
-        return jsonify({'error': 'Mismatch between files and paths or missing data'}), 400
-
-    try:
-        # Clean up any old project
-        if os.path.exists(PROJECTS_DIR):
-            shutil.rmtree(PROJECTS_DIR)
-        os.makedirs(PROJECTS_DIR)
-        
-        project_root_name = relative_paths[0].split('/')[0] if relative_paths else 'project'
-        project_root_path = os.path.join(PROJECTS_DIR, project_root_name)
-
-        for i, file in enumerate(files):
-            relative_path = relative_paths[i]
-            # Sanitize the path to prevent directory traversal
-            sanitized_relative_path = os.path.normpath(relative_path).lstrip('./\\')
-            if '..' in sanitized_relative_path.split(os.path.sep):
-                logging.warning(f"Skipping potentially malicious path: {relative_path}")
-                continue
-            
-            # Reconstruct the full destination path
-            dest_path = os.path.join(PROJECTS_DIR, sanitized_relative_path)
-            
-            # Create subdirectories if they don't exist
-            os.makedirs(os.path.dirname(dest_path), exist_ok=True)
-            
-            file.save(dest_path)
-
-        logging.info(f"Successfully uploaded and reconstructed project at {project_root_path}")
-
-        # Automatically find and set the test directory within the new project
-        TESTS_DIRECTORY = find_test_directory_in_project(project_root_path)
-        save_config()
-        
-        return jsonify({'status': 'success', 'message': f'Project uploaded and test directory set to {TESTS_DIRECTORY}'})
-
-    except Exception as e:
-        logging.error(f"Error uploading project: {e}")
-        return jsonify({'error': str(e)}), 500
-
-
 @app.route('/list-suites', methods=['GET'])
 def list_suites():
     if not TESTS_DIRECTORY or not os.path.isdir(TESTS_DIRECTORY):
-        logging.warning("No test directory configured for /list-suites")
-        return jsonify({"error": "No test directory configured. Please upload a project."}), 500
+        return jsonify({"error": "Test directory is not configured in server.py"}), 500
 
     suites = []
     try:
@@ -487,66 +412,21 @@ def list_suites():
                     file_path = os.path.join(root, file)
                     relative_path = os.path.relpath(file_path, TESTS_DIRECTORY)
                     test_cases = parse_robot_file(file_path)
-                    if test_cases:
+                    if test_cases: # Only add files that contain test cases
                         suites.append({
                             "name": relative_path.replace('\\', '/'),
                             "testCases": test_cases
                         })
         suites.sort(key=lambda x: x['name'])
-        logging.debug(f"Found {len(suites)} test suites")
         return jsonify(suites)
     except Exception as e:
-        logging.error(f"Failed to scan suites: {str(e)}")
         return jsonify({"error": f"Failed to scan suites: {str(e)}"}), 500
 
 @app.route('/scan-dependencies', methods=['GET'])
 def scan_dependencies_endpoint():
-    result = {
-        'status': 'success',
-        'installed_packages_count': 0,
-        'requirements_files': [],
-        'missing_packages': [],
-        'version_conflicts': [],
-        'suggestions': [],
-        'errors': []
-    }
-    
-    try:
-        installed_packages = get_installed_packages()
-        result['installed_packages_count'] = len(installed_packages)
-        
-        project_root = os.path.dirname(os.path.abspath(TESTS_DIRECTORY)) if TESTS_DIRECTORY else None
-        requirements_files = find_requirements_files(project_root)
-        requirements_files = list(set(requirements_files))
-        result['requirements_files'] = requirements_files
-        
-        if not requirements_files:
-            result['suggestions'].append("No requirements.txt files found")
-            return jsonify(result)
-        
-        all_required_packages = {}
-        for req_file in requirements_files:
-            required = parse_requirements_file(req_file)
-            for pkg_name, pkg_info in required.items():
-                if pkg_name not in all_required_packages:
-                    all_required_packages[pkg_name] = pkg_info
-        
-        for pkg_name, pkg_info in all_required_packages.items():
-            if pkg_name not in installed_packages:
-                result['missing_packages'].append(pkg_info)
-            else:
-                installed_version = installed_packages[pkg_name]
-                if pkg_info['version_spec'] and not check_version_compatibility(installed_version, pkg_info['version_spec']):
-                    result['version_conflicts'].append({**pkg_info, 'installed_version': installed_version})
-        
-        if not result['missing_packages'] and not result['version_conflicts']:
-            result['suggestions'].append("All dependencies satisfied")
-    
-    except Exception as e:
-        result['status'] = 'error'
-        result['errors'].append(f"Error during scan: {str(e)}")
-    
+    result = scan_dependencies()
     return jsonify(result)
+
 
 @app.route('/install-dependencies', methods=['POST'])
 def install_dependencies():
@@ -574,7 +454,7 @@ def install_dependencies():
 def run_robot_tests():
     global state
     if not TESTS_DIRECTORY or not os.path.isdir(TESTS_DIRECTORY):
-        return jsonify({"status": "error", "message": "No test directory configured"}), 400
+        return jsonify({"status": "error", "message": "Test directory is not configured in server.py"}), 400
 
     if state.status == "running":
         return jsonify({"status": "error", "message": "Execution already running"}), 409
@@ -588,19 +468,19 @@ def run_robot_tests():
         
         if runType == 'Orchestrator' and 'orchestratorData' in config:
             state.orchestrator_data = config['orchestratorData']
+            # Sort by priority if available
             headers = state.orchestrator_data.get('headers', [])
             data_rows = state.orchestrator_data.get('data', [])
-            
             try:
                 priority_index = next((i for i, h in enumerate(headers) if str(h).lower() == 'priority'), -1)
                 if priority_index != -1:
                     priority_order = {'P0': 0, 'P1': 1, 'P2': 2, 'P3': 3}
+                    # Keep original index to maintain stability for same-priority items
                     indexed_rows = list(enumerate(data_rows))
                     indexed_rows.sort(key=lambda x: (priority_order.get(str(x[1][priority_index]).upper(), 99), x[0]))
                     state.orchestrator_data['data'] = [row for _, row in indexed_rows]
-                    logging.debug("Sorted orchestrator data by priority")
             except Exception as e:
-                logging.error(f"Priority sorting error: {e}")
+                state.logs.append(f"Could not sort by priority: {e}")
 
         tests_to_run_path = TESTS_DIRECTORY
         command = ['robot']
@@ -628,22 +508,21 @@ def run_robot_tests():
 
         command.append(tests_to_run_path)
 
-        logging.info(f"Executing robot command: {' '.join(command)}")
-        thread = Thread(target=run_robot_in_thread, args=(command, output_dir, timestamp, TESTS_DIRECTORY))
+        thread = Thread(target=run_robot_in_thread, args=(command, output_dir, timestamp))
         thread.daemon = True
         thread.start()
         
+        # Clean up the variable file after a short delay to ensure robot has read it
         if variable_file_to_cleanup:
             try:
-                time.sleep(2)
+                time.sleep(2) # Give robot time to read the file
                 os.remove(variable_file_to_cleanup)
             except Exception as e:
-                logging.error(f"Error cleaning up variable file: {e}")
+                print(f"Error cleaning up var file: {e}")
 
         return jsonify({"status": "running", "message": "Execution started"})
     except Exception as e:
         state.reset()
-        logging.error(f"Error in run_robot_tests: {str(e)}")
         return jsonify({"status": "error", "message": str(e)}), 500
 
 @app.route('/status', methods=['GET'])
@@ -663,9 +542,12 @@ def stop_robot_tests():
     if state.process and state.process.poll() is None:
         try:
             state.status = "stopped"
+            # Terminate the entire process group
             if os.name == 'nt':
+                # On Windows, sending CTRL_BREAK_EVENT is more effective for console apps
                 state.process.send_signal(signal.CTRL_BREAK_EVENT)
             else:
+                # On Unix-like systems, kill the process group
                 os.killpg(os.getpgid(state.process.pid), signal.SIGTERM)
             return jsonify({"status": "success", "message": "Stop signal sent"})
         except Exception as e:
@@ -698,6 +580,7 @@ def get_report(filename):
         if not actual_filename:
             return jsonify({"error": "File not found"}), 404
         
+        # For HTML files, inject JS to fix relative links if needed
         if actual_filename.endswith('.html'):
             with open(os.path.join(REPORTS_DIR, actual_filename), 'r', encoding='utf-8') as f:
                 html_content = f.read()
@@ -709,8 +592,10 @@ def get_report(filename):
             response.headers['Content-Type'] = 'text/html'
             return response
         elif actual_filename.lower().endswith(('.mp4', '.webm')):
+            # Redirect to a streaming endpoint for videos
             return redirect(f'/stream-video/{actual_filename}')
         else:
+            # For other files, serve them directly
             return send_from_directory(REPORTS_DIR, actual_filename)
     except Exception as e:
         return jsonify({"error": str(e)}), 500
@@ -762,57 +647,16 @@ def delete_report(filename):
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-@app.route('/test-directory-status', methods=['GET'])
-def get_test_directory_status():
-    if not TESTS_DIRECTORY or not os.path.isdir(TESTS_DIRECTORY):
-        return jsonify({'configured': False, 'message': 'No test directory configured.'})
-    
-    try:
-        robot_count = sum(len([f for f in files if f.endswith('.robot')]) 
-                         for _, _, files in os.walk(TESTS_DIRECTORY))
-        return jsonify({'configured': True, 'directory': TESTS_DIRECTORY, 'robot_file_count': robot_count})
-    except Exception as e:
-        return jsonify({'configured': False, 'message': str(e)})
-
-@app.route('/discover-test-directories', methods=['GET'])
-def discover_test_directories():
-    try:
-        search_path = request.args.get('start_path', PROJECTS_DIR)
-        robot_dirs = []
-        for root, _, files in os.walk(search_path):
-            if any(f.endswith('.robot') for f in files):
-                 robot_dirs.append({
-                    'path': str(Path(root).absolute()),
-                    'relative_path': str(Path(root).relative_to(Path(PROJECTS_DIR).absolute())),
-                    'robot_count': len([f for f in files if f.endswith('.robot')])
-                })
-        return jsonify({'status': 'success', 'directories': robot_dirs})
-    except Exception as e:
-        return jsonify({'status': 'error', 'message': str(e)}), 500
-
-@app.route('/set-test-directory', methods=['POST'])
-def set_test_directory():
-    global TESTS_DIRECTORY
-    data = request.get_json()
-    new_dir = data.get('directory')
-    if new_dir and os.path.isdir(new_dir):
-        TESTS_DIRECTORY = new_dir
-        save_config()
-        return jsonify({'status': 'success', 'message': f'Test directory set to {new_dir}'})
-    return jsonify({'status': 'error', 'message': 'Invalid directory'}), 400
-
 
 if __name__ == '__main__':
-    load_config()
     print("=" * 60)
     print("Robot Maestro Backend Server")
     if TESTS_DIRECTORY:
         print(f"✓ Active Test Directory: {TESTS_DIRECTORY}")
     else:
-        print("✗ WARNING: No active test directory. Please upload a project.")
-    print(f"✓ Projects will be uploaded to: {PROJECTS_DIR}")
+        print("✗ WARNING: No active test directory.")
+        print("  Please edit server.py and set the TESTS_DIRECTORY variable.")
     print(f"✓ Reports will be archived in: {REPORTS_DIR}")
     print("=" * 60)
     print("Starting server on http://127.0.0.1:5001")
-    logging.info("Starting Flask server on http://127.0.0.1:5001")
     app.run(host='127.0.0.1', port=5001, debug=True)

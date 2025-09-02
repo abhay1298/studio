@@ -1,12 +1,11 @@
 
 "use client";
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
-import { CheckCircle2, AlertTriangle, XCircle, Loader2, ListTodo, PackageCheck, PackagePlus, ServerCrash, Ban } from 'lucide-react';
+import { CheckCircle2, AlertTriangle, XCircle, Loader2, ListTodo, PackageCheck, PackagePlus } from 'lucide-react';
 import { DependencyStatusDialog } from './dependency-status-dialog';
-import { useExecutionContext } from '@/contexts/execution-context';
 
 export type DependencyScanResult = {
     status: 'success' | 'error';
@@ -18,32 +17,42 @@ export type DependencyScanResult = {
     errors: string[];
 };
 
+
 export function DependencyChecker() {
-  const { 
-    dependencyScanResult,
-    isScanningDependencies,
-    scanError,
-    scanDependencies,
-    installDependencies,
-    isInstallingDependencies,
-    directoryStatus,
-  } = useExecutionContext();
-
+  const [scanResult, setScanResult] = useState<DependencyScanResult | null>(null);
+  const [isScanning, setIsScanning] = useState(false);
+  const [scanError, setScanError] = useState<string | null>(null);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [isInstalling, setIsInstalling] = useState(false);
 
-  const handleInstall = () => {
-    if (dependencyScanResult?.missing_packages) {
-      installDependencies(dependencyScanResult.missing_packages);
+
+  const handleScan = async () => {
+    setIsScanning(true);
+    setScanError(null);
+    setScanResult(null);
+    try {
+      const response = await fetch('/api/scan-dependencies');
+      const result: DependencyScanResult = await response.json();
+
+      if (!response.ok || result.status === 'error') {
+        throw new Error(result.errors?.[0] || 'Failed to scan dependencies on the backend.');
+      }
+      setScanResult(result);
+      
+    } catch (error: any) {
+      setScanError(error.message || 'Could not connect to the dependency scanner service.');
+    } finally {
+      setIsScanning(false);
     }
   };
-
-  const hasMissing = (dependencyScanResult?.missing_packages?.length || 0) > 0;
-  const hasConflicts = (dependencyScanResult?.version_conflicts?.length || 0) > 0;
-  const hasIssues = hasMissing || hasConflicts;
-  const foundReqs = (dependencyScanResult?.requirements_files?.length || 0) > 0;
+  
+  const handleInstall = async () => {
+      // Logic for installing dependencies will be added here
+      setIsDialogOpen(false);
+  };
 
   const renderContent = () => {
-    if (isScanningDependencies) {
+    if (isScanning) {
         return (
             <div className="flex items-center gap-4 text-muted-foreground p-4 justify-center">
                 <Loader2 className="h-6 w-6 animate-spin" />
@@ -55,14 +64,14 @@ export function DependencyChecker() {
     if (scanError) {
         return (
              <Alert variant="destructive">
-                <ServerCrash className="h-4 w-4" />
+                <XCircle className="h-4 w-4" />
                 <AlertTitle>Scan Failed</AlertTitle>
                 <AlertDescription>{scanError}</AlertDescription>
             </Alert>
         )
     }
 
-    if (!dependencyScanResult) {
+    if (!scanResult) {
       return (
         <Alert variant="default" className="border-primary/50">
             <ListTodo className="h-4 w-4" />
@@ -74,33 +83,24 @@ export function DependencyChecker() {
       );
     }
     
-    if (dependencyScanResult.errors.length > 0) {
+    if (scanResult.errors.length > 0) {
         return (
             <Alert variant="destructive">
                 <XCircle className="h-4 w-4" />
                 <AlertTitle>An Error Occurred During Scan</AlertTitle>
                 <AlertDescription>
                     <ul className="list-disc list-inside">
-                        {dependencyScanResult.errors.map((err, i) => <li key={i}>{err}</li>)}
+                        {scanResult.errors.map((err, i) => <li key={i}>{err}</li>)}
                     </ul>
                 </AlertDescription>
             </Alert>
         )
     }
 
-    if (!foundReqs) {
-        return (
-             <Alert variant="destructive">
-                <AlertTriangle className="h-4 w-4" />
-                <AlertTitle>No Requirements Files Found</AlertTitle>
-                <AlertDescription>
-                    The scan completed but could not find any `requirements.txt` files in your project.
-                </AlertDescription>
-            </Alert>
-        )
-    }
-    
-    if (!hasIssues) {
+    const hasMissing = scanResult.missing_packages.length > 0;
+    const hasConflicts = scanResult.version_conflicts.length > 0;
+
+    if (!hasMissing && !hasConflicts) {
          return (
              <Alert className="border-green-500/50 text-green-700 dark:border-green-500/50 dark:text-green-400">
                 <PackageCheck className="h-4 w-4 !text-green-500" />
@@ -115,7 +115,7 @@ export function DependencyChecker() {
             <XCircle className="h-4 w-4" />
             <AlertTitle>Dependency Issues Found</AlertTitle>
             <AlertDescription>
-                Your project has {dependencyScanResult.missing_packages.length} missing package(s) and {dependencyScanResult.version_conflicts.length} version conflict(s).
+                Your project has {scanResult.missing_packages.length} missing package(s) and {scanResult.version_conflicts.length} version conflict(s).
             </AlertDescription>
             <Button size="sm" className="mt-4 w-full" onClick={() => setIsDialogOpen(true)}>
                 <PackagePlus className="mr-2 h-4 w-4" />
@@ -123,30 +123,25 @@ export function DependencyChecker() {
             </Button>
         </Alert>
     );
+
+
   };
 
   return (
     <>
       <div className="grid gap-4">
-        <Button onClick={scanDependencies} disabled={isScanningDependencies || !directoryStatus?.configured}>
-          {isScanningDependencies ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <ListTodo className="mr-2 h-4 w-4" />}
+        <Button onClick={handleScan} disabled={isScanning}>
+          {isScanning ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <ListTodo className="mr-2 h-4 w-4" />}
           Scan Project Dependencies
         </Button>
-        {!directoryStatus?.configured && (
-          <Alert variant="default">
-            <Ban className="h-4 w-4"/>
-            <AlertTitle>Action Required</AlertTitle>
-            <AlertDescription>You must configure a test directory before you can scan for dependencies.</AlertDescription>
-          </Alert>
-        )}
-        {directoryStatus?.configured && renderContent()}
+        {renderContent()}
       </div>
       <DependencyStatusDialog
           isOpen={isDialogOpen}
           onOpenChange={setIsDialogOpen}
-          result={dependencyScanResult}
+          result={scanResult}
           onInstall={handleInstall}
-          isInstalling={isInstallingDependencies}
+          isInstalling={isInstalling}
       />
     </>
   );

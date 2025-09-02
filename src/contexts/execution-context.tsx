@@ -3,9 +3,8 @@
 
 import { createContext, useContext, useState, useCallback, ReactNode, useEffect, Dispatch, SetStateAction } from 'react';
 import { useToast } from "@/hooks/use-toast";
-import { CheckCircle2, FileCheck2, XCircle, StopCircle, Loader2, FolderCheck, UploadCloud, AlertTriangle } from 'lucide-react';
+import { CheckCircle2, FileCheck2, XCircle, StopCircle, Loader2 } from 'lucide-react';
 import type { TestSuite } from '@/components/dashboard/project-explorer';
-import type { DependencyScanResult } from '@/components/dashboard/dependency-checker';
 import * as XLSX from 'xlsx';
 import Papa from 'papaparse';
 
@@ -19,22 +18,6 @@ type RunConfig = {
 };
 
 type TableData = (string | number)[][];
-type MissingPackage = { name: string; required_spec: string; source_file: string; raw_line: string };
-type ProjectFileSource = 'local' | 'git' | null;
-
-export type DirectoryStatus = {
-  configured: boolean;
-  directory?: string;
-  robot_file_count?: number;
-  message?: string;
-};
-
-export type DiscoveredDirectory = {
-  path: string;
-  relative_path: string;
-  robot_count: number;
-  depth: number;
-}
 
 interface ExecutionContextType {
   status: ExecutionStatus;
@@ -42,25 +25,11 @@ interface ExecutionContextType {
   lastFailedLogs: string;
   runConfig: RunConfig;
   
-  projectFileName: string | null;
-  projectFileSource: ProjectFileSource;
-  isUploadingProject: boolean;
-
   dataFileName: string | null;
   
-  dependencyScanResult: DependencyScanResult | null;
-  isScanningDependencies: boolean;
-  isInstallingDependencies: boolean;
-  scanError: string | null;
-
   testSuites: TestSuite[];
   isLoadingSuites: boolean;
   suiteLoadError: string | null;
-
-  directoryStatus: DirectoryStatus | null;
-  discoveredDirectories: DiscoveredDirectory[] | null;
-  isDiscovering: boolean;
-  isSettingDirectory: boolean;
 
   editedData: TableData;
   setEditedData: Dispatch<SetStateAction<TableData>>;
@@ -69,22 +38,14 @@ interface ExecutionContextType {
   hasHydrated: boolean;
 
   fetchSuites: () => Promise<void>;
-  fetchDirectoryStatus: () => Promise<void>;
-  discoverDirectories: () => Promise<void>;
-  setTestDirectory: (path: string) => Promise<void>;
-
+  
   handleInputChange: (field: keyof RunConfig, value: string) => void;
   handleRun: (runType: string) => Promise<void>;
   handleStop: () => Promise<void>;
   clearLogs: () => void;
 
-  handleProjectFileUpload: (files: FileList) => Promise<void>;
-  clearProjectFile: () => void;
   handleDataFileUpload: (file: File | null) => void;
   clearDataFile: () => void;
-
-  scanDependencies: () => void;
-  installDependencies: (packages: MissingPackage[]) => void;
 }
 
 const ExecutionContext = createContext<ExecutionContextType | undefined>(undefined);
@@ -123,25 +84,11 @@ export function ExecutionProvider({ children }: { children: ReactNode }) {
     testcase: '',
   });
 
-  const [projectFileName, setProjectFileName] = useState<string | null>(null);
-  const [projectFileSource, setProjectFileSource] = useState<ProjectFileSource>(null);
-  const [isUploadingProject, setIsUploadingProject] = useState(false);
-
   const [dataFileName, setDataFileName] = useState<string | null>(null);
   
-  const [dependencyScanResult, setDependencyScanResult] = useState<DependencyScanResult | null>(null);
-  const [isScanningDependencies, setIsScanningDependencies] = useState(false);
-  const [isInstallingDependencies, setIsInstallingDependencies] = useState(false);
-  const [scanError, setScanError] = useState<string | null>(null);
-
   const [testSuites, setTestSuites] = useState<TestSuite[]>([]);
   const [isLoadingSuites, setIsLoadingSuites] = useState(false);
   const [suiteLoadError, setSuiteLoadError] = useState<string | null>(null);
-
-  const [directoryStatus, setDirectoryStatus] = useState<DirectoryStatus | null>(null);
-  const [discoveredDirectories, setDiscoveredDirectories] = useState<DiscoveredDirectory[] | null>(null);
-  const [isDiscovering, setIsDiscovering] = useState(false);
-  const [isSettingDirectory, setIsSettingDirectory] = useState(false);
 
   const [editedData, setEditedData] = useState<TableData>([]);
   const [editedHeaders, setEditedHeaders] = useState<string[]>([]);
@@ -173,30 +120,11 @@ export function ExecutionProvider({ children }: { children: ReactNode }) {
         setTestSuites(suites);
     } catch (e: any) {
         console.error("Failed to fetch test suites:", e);
-        setTestSuites([]);
         setSuiteLoadError(e.message || 'An unknown error occurred.');
     } finally {
         setIsLoadingSuites(false);
     }
   }, []);
-
-  const fetchDirectoryStatus = useCallback(async () => {
-    try {
-        const response = await fetch('/api/test-directory-status');
-        const data: DirectoryStatus = await response.json();
-        setDirectoryStatus(data);
-        if (data.configured) {
-            fetchSuites();
-        } else {
-            setTestSuites([]);
-        }
-    } catch (e) {
-        setDirectoryStatus({
-            configured: false,
-            message: 'Failed to connect to the backend server to get directory status.'
-        })
-    }
-  }, [fetchSuites]);
 
   const handleDataFileUpload = useCallback(async (file: File | null) => {
     if (!file) {
@@ -256,37 +184,26 @@ export function ExecutionProvider({ children }: { children: ReactNode }) {
   }, [toast]);
   
   useEffect(() => {
-    setProjectFileName(getInitialState('projectFileName', null));
-    setProjectFileSource(getInitialState('projectFileSource', null));
     setDataFileName(getInitialState('dataFileName', null));
     setEditedData(getInitialState('editedData', []));
     setEditedHeaders(getInitialState('editedHeaders', []));
-    setDependencyScanResult(getInitialState('dependencyScanResult', null));
     setHasHydrated(true);
 
-    fetchDirectoryStatus();
-  }, [fetchDirectoryStatus]);
+    fetchSuites();
+  }, [fetchSuites]);
 
   useEffect(() => {
     if (hasHydrated) {
         try {
-            localStorage.setItem('projectFileName', JSON.stringify(projectFileName));
-            localStorage.setItem('projectFileSource', JSON.stringify(projectFileSource));
             localStorage.setItem('dataFileName', JSON.stringify(dataFileName));
             localStorage.setItem('editedData', JSON.stringify(editedData));
             localStorage.setItem('editedHeaders', JSON.stringify(editedHeaders));
-            localStorage.setItem('dependencyScanResult', JSON.stringify(dependencyScanResult));
         } catch (error) {
             console.warn(`Error writing to localStorage:`, error);
         }
     }
-  }, [projectFileName, projectFileSource, dataFileName, editedData, editedHeaders, dependencyScanResult, hasHydrated]);
+  }, [dataFileName, editedData, editedHeaders, hasHydrated]);
   
-  const clearProjectFile = useCallback(() => {
-    setProjectFileName(null);
-    setProjectFileSource(null);
-  }, []);
-
   const clearDataFile = useCallback(() => {
     setDataFileName(null);
     setEditedData([]);
@@ -503,233 +420,27 @@ export function ExecutionProvider({ children }: { children: ReactNode }) {
     }
   }, [addLog, toast]);
 
-  const handleProjectFileUpload = useCallback(async (files: FileList) => {
-    setIsUploadingProject(true);
-    toast({ title: 'Uploading Project...', description: 'Please wait...', action: <Loader2 className="animate-spin" /> });
-    
-    try {
-        if (!files || files.length === 0) {
-            throw new Error("No files selected for upload.");
-        }
-
-        const formData = new FormData();
-        let dataFileFound: File | null = null;
-        const projectRootName = files[0].webkitRelativePath.split('/')[0];
-        
-        for (let i = 0; i < files.length; i++) {
-            const file = files[i];
-            formData.append('files', file);
-            formData.append('relativePaths', file.webkitRelativePath);
-            
-            if (!dataFileFound && (file.name.endsWith('.csv') || file.name.endsWith('.xlsx'))) {
-              dataFileFound = file;
-            }
-        }
-        
-        // The browser will set the 'Content-Type' to 'multipart/form-data' automatically.
-        // Do not set it manually.
-        const response = await fetch('/api/upload-project', { 
-            method: 'POST', 
-            body: formData 
-        });
-
-        if (!response.ok) {
-            const errorData = await response.json();
-            throw new Error(errorData.error || 'Failed to upload project to backend.');
-        }
-        
-        setProjectFileName(projectRootName);
-        setProjectFileSource('local');
-        toast({ title: "Project Uploaded", description: `"${projectRootName}" is now the active project.`, action: <UploadCloud className="text-primary"/> });
-
-        await fetchDirectoryStatus(); 
-
-        if (dataFileFound) {
-          toast({ title: "Data File Found!", description: `Automatically loaded "${dataFileFound.name}" from your project.`, action: <FileCheck2 className="text-green-500" /> });
-          await handleDataFileUpload(dataFileFound);
-        }
-
-    } catch (error: any) {
-        toast({ variant: 'destructive', title: 'Project Upload Failed', description: error.message });
-        clearProjectFile();
-    } finally {
-        setIsUploadingProject(false);
-    }
-  }, [toast, fetchDirectoryStatus, handleDataFileUpload, clearProjectFile]);
-
-
-  const scanDependencies = useCallback(async () => {
-    if (!directoryStatus?.configured) {
-        toast({ variant: 'destructive', title: 'Cannot Scan', description: 'An active test directory must be configured first.' });
-        return;
-    }
-    setIsScanningDependencies(true);
-    setScanError(null);
-    setDependencyScanResult(null);
-    try {
-      const response = await fetch('/api/scan-dependencies');
-      const result: DependencyScanResult = await response.json();
-
-      if (!response.ok || result.status === 'error') {
-        throw new Error(result.errors?.[0] || 'Failed to scan dependencies on the backend.');
-      }
-      setDependencyScanResult(result);
-      
-    } catch (error: any) {
-      setScanError(error.message || 'Could not connect to the dependency scanner service.');
-    } finally {
-      setIsScanningDependencies(false);
-    }
-  }, [directoryStatus, toast]);
-  
-  const installDependencies = useCallback((packages: MissingPackage[]) => {
-    if (!packages || packages.length === 0) return;
-    
-    setIsInstallingDependencies(true);
-    let pollingInterval: NodeJS.Timeout;
-
-    const startInstallation = async () => {
-        try {
-            const response = await fetch('/api/install-dependencies', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ missing_packages: packages }),
-            });
-            const data = await response.json();
-            if (!response.ok) throw new Error(data.message || 'Failed to start installation');
-
-            pollingInterval = setInterval(async () => {
-                try {
-                    const statusRes = await fetch('/api/status');
-                    const statusData = await statusRes.json();
-                    if (statusData.logs) {
-                        setLogs(statusData.logs);
-                    }
-                    if (statusData.status !== 'running') {
-                        clearInterval(pollingInterval);
-                        setIsInstallingDependencies(false);
-                        if (statusData.status === 'success') {
-                            toast({
-                                title: 'Installation Complete',
-                                description: 'All missing packages have been installed. Please scan again to verify.',
-                                action: <CheckCircle2 className="text-green-500" />
-                            });
-                            await scanDependencies();
-                        } else {
-                            toast({
-                                variant: 'destructive',
-                                title: 'Installation Failed',
-                                description: 'Check the execution logs for more details.',
-                            });
-                        }
-                    }
-                } catch (pollError) {
-                  console.error('Polling error:', pollError);
-                  clearInterval(pollingInterval);
-                  setIsInstallingDependencies(false);
-                  toast({ variant: 'destructive', title: 'Connection Error', description: 'Lost connection to the backend during installation.' });
-                }
-            }, 2000);
-
-        } catch (e: any) {
-            toast({ variant: 'destructive', title: 'Installation Error', description: e.message });
-            setIsInstallingDependencies(false);
-        }
-    };
-
-    toast({
-        title: 'Starting Installation...',
-        description: `Attempting to install ${packages.length} package(s).`,
-        action: <Loader2 className="animate-spin" />,
-    });
-
-    startInstallation();
-
-  }, [toast, scanDependencies]);
-
-  const discoverDirectories = useCallback(async () => {
-    setIsDiscovering(true);
-    setDiscoveredDirectories(null);
-    try {
-        const response = await fetch('/api/discover-test-directories');
-        const data = await response.json();
-        if (data.status !== 'success') {
-            throw new Error(data.message || 'Failed to discover directories from backend.');
-        }
-        setDiscoveredDirectories(data.directories);
-    } catch (e: any) {
-        toast({ variant: 'destructive', title: 'Discovery Failed', description: e.message });
-    } finally {
-        setIsDiscovering(false);
-    }
-  }, [toast]);
-
-  const setTestDirectory = useCallback(async (path: string) => {
-    setIsSettingDirectory(true);
-    try {
-        const response = await fetch('/api/set-test-directory', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ directory: path }),
-        });
-        const data = await response.json();
-        if (data.status !== 'success') {
-            throw new Error(data.message || 'Failed to set test directory on backend.');
-        }
-        toast({
-            title: 'Directory Configured',
-            description: `Active test directory has been set.`,
-            action: <FolderCheck className="text-green-500" />
-        });
-        await fetchDirectoryStatus();
-        setDiscoveredDirectories(null); // Close the discovery dialog
-    } catch (e: any) {
-        toast({ variant: 'destructive', title: 'Configuration Failed', description: e.message });
-    } finally {
-        setIsSettingDirectory(false);
-    }
-  }, [toast, fetchDirectoryStatus]);
-
-
   const value = {
     status,
     logs,
     lastFailedLogs,
     runConfig,
-    projectFileName,
-    projectFileSource,
-    isUploadingProject,
     dataFileName,
-    dependencyScanResult,
-    isScanningDependencies,
-    isInstallingDependencies,
-    scanError,
     testSuites,
     isLoadingSuites,
     suiteLoadError,
-    directoryStatus,
-    discoveredDirectories,
-    isDiscovering,
-    isSettingDirectory,
     editedData,
     setEditedData,
     editedHeaders,
     setEditedHeaders,
     hasHydrated,
     fetchSuites,
-    fetchDirectoryStatus,
-    discoverDirectories,
-    setTestDirectory,
     handleInputChange,
     handleRun,
     handleStop,
     clearLogs,
-    handleProjectFileUpload,
-    clearProjectFile,
     handleDataFileUpload,
     clearDataFile,
-    scanDependencies,
-    installDependencies,
   };
 
   return (
