@@ -100,29 +100,22 @@ export function ExecutionProvider({ children }: { children: ReactNode }) {
     setIsLoadingSuites(true);
     setSuiteLoadError(null);
     try {
-        const response = await fetch('/api/list-suites');
-        
-        if (!response.ok) {
-            let errorMessage;
-            try {
-                const errorData = await response.json();
-                errorMessage = errorData.error || `Failed to fetch suites. Status: ${response.status}`;
-            } catch (e) {
-                errorMessage = await response.text();
-                if (!errorMessage) {
-                    errorMessage = `Failed to fetch suites from the backend. Status: ${response.status}`;
-                }
-            }
-            throw new Error(errorMessage);
-        }
-        
-        const suites = await response.json();
-        setTestSuites(suites);
+      const response = await fetch('/api/list-suites');
+      const data = await response.json();
+
+      if (!response.ok) {
+        // If the API returns a JSON error, use that message
+        const errorMessage = data.error || `Failed to fetch suites. Status: ${response.status}`;
+        throw new Error(errorMessage);
+      }
+      
+      setTestSuites(data);
     } catch (e: any) {
-        console.error("Failed to fetch test suites:", e);
-        setSuiteLoadError(e.message || 'An unknown error occurred.');
+      console.error("Failed to fetch test suites:", e);
+      // Set the error state to be displayed in the UI
+      setSuiteLoadError(e.message || 'An unknown error occurred while fetching suites.');
     } finally {
-        setIsLoadingSuites(false);
+      setIsLoadingSuites(false);
     }
   }, []);
 
@@ -458,4 +451,3 @@ export function useExecutionContext() {
   return context;
 }
 
-    
