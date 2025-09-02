@@ -594,28 +594,35 @@ export function ExecutionProvider({ children }: { children: ReactNode }) {
             if (!response.ok) throw new Error(data.message || 'Failed to start installation');
 
             pollingInterval = setInterval(async () => {
-                const statusRes = await fetch('/api/status');
-                const statusData = await statusRes.json();
-                if (statusData.logs) {
-                    setLogs(statusData.logs);
-                }
-                if (statusData.status !== 'running') {
-                    clearInterval(pollingInterval);
-                    setIsInstallingDependencies(false);
-                    if (statusData.status === 'success') {
-                        toast({
-                            title: 'Installation Complete',
-                            description: 'All missing packages have been installed. Please scan again to verify.',
-                            action: <CheckCircle2 className="text-green-500" />
-                        });
-                        await scanDependencies();
-                    } else {
-                        toast({
-                            variant: 'destructive',
-                            title: 'Installation Failed',
-                            description: 'Check the execution logs for more details.',
-                        });
+                try {
+                    const statusRes = await fetch('/api/status');
+                    const statusData = await statusRes.json();
+                    if (statusData.logs) {
+                        setLogs(statusData.logs);
                     }
+                    if (statusData.status !== 'running') {
+                        clearInterval(pollingInterval);
+                        setIsInstallingDependencies(false);
+                        if (statusData.status === 'success') {
+                            toast({
+                                title: 'Installation Complete',
+                                description: 'All missing packages have been installed. Please scan again to verify.',
+                                action: <CheckCircle2 className="text-green-500" />
+                            });
+                            await scanDependencies();
+                        } else {
+                            toast({
+                                variant: 'destructive',
+                                title: 'Installation Failed',
+                                description: 'Check the execution logs for more details.',
+                            });
+                        }
+                    }
+                } catch (pollError) {
+                  console.error('Polling error:', pollError);
+                  clearInterval(pollingInterval);
+                  setIsInstallingDependencies(false);
+                  toast({ variant: 'destructive', title: 'Connection Error', description: 'Lost connection to the backend during installation.' });
                 }
             }, 2000);
 
@@ -734,3 +741,5 @@ export function useExecutionContext() {
   }
   return context;
 }
+
+    
