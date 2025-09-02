@@ -1,5 +1,4 @@
 
-
 "use client";
 
 import { DependencyChecker } from "@/components/dashboard/dependency-checker";
@@ -48,6 +47,3 @@ export default function ProjectManagementPage() {
     </div>
   );
 }
-
-    
-    
