@@ -1,3 +1,4 @@
+
 "use client";
 
 import { createContext, useContext, useState, useCallback, ReactNode, useEffect, Dispatch, SetStateAction } from 'react';
@@ -150,44 +151,7 @@ export function ExecutionProvider({ children }: { children: ReactNode }) {
 
   const { toast } = useToast();
   
-  useEffect(() => {
-    setProjectFileName(getInitialState('projectFileName', null));
-    setProjectFileSource(getInitialState('projectFileSource', null));
-    setDataFileName(getInitialState('dataFileName', null));
-    setDependencyScanResult(getInitialState('dependencyScanResult', null));
-    setEditedData(getInitialState('editedData', []));
-    setEditedHeaders(getInitialState('editedHeaders', []));
-    setHasHydrated(true);
-
-    fetchDirectoryStatus();
-  }, []);
-
-  useEffect(() => {
-    if (hasHydrated) {
-        try {
-            localStorage.setItem('projectFileName', JSON.stringify(projectFileName));
-            localStorage.setItem('projectFileSource', JSON.stringify(projectFileSource));
-            localStorage.setItem('dataFileName', JSON.stringify(dataFileName));
-            localStorage.setItem('editedData', JSON.stringify(editedData));
-            localStorage.setItem('editedHeaders', JSON.stringify(editedHeaders));
-            localStorage.setItem('dependencyScanResult', JSON.stringify(dependencyScanResult));
-        } catch (error) {
-            console.warn(`Error writing to localStorage:`, error);
-        }
-    }
-  }, [projectFileName, projectFileSource, dataFileName, editedData, editedHeaders, dependencyScanResult, hasHydrated]);
-  
-  const clearProjectFile = useCallback(() => {
-    setProjectFileName(null);
-    setProjectFileSource(null);
-  }, []);
-
-  const clearDataFile = useCallback(() => {
-    setDataFileName(null);
-    setEditedData([]);
-    setEditedHeaders([]);
-  }, []);
-  
+  // This is defined here because fetchDirectoryStatus needs it.
   const fetchSuites = useCallback(async () => {
     setIsLoadingSuites(true);
     setSuiteLoadError(null);
@@ -219,6 +183,63 @@ export function ExecutionProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
+  const fetchDirectoryStatus = useCallback(async () => {
+    try {
+        const response = await fetch('/api/test-directory-status');
+        const data: DirectoryStatus = await response.json();
+        setDirectoryStatus(data);
+        if (data.configured) {
+            fetchSuites();
+        } else {
+            setTestSuites([]);
+        }
+    } catch (e) {
+        setDirectoryStatus({
+            status: 'error',
+            configured: false,
+            message: 'Failed to connect to the backend server to get directory status.'
+        })
+    }
+  }, [fetchSuites]);
+
+  useEffect(() => {
+    setProjectFileName(getInitialState('projectFileName', null));
+    setProjectFileSource(getInitialState('projectFileSource', null));
+    setDataFileName(getInitialState('dataFileName', null));
+    setDependencyScanResult(getInitialState('dependencyScanResult', null));
+    setEditedData(getInitialState('editedData', []));
+    setEditedHeaders(getInitialState('editedHeaders', []));
+    setHasHydrated(true);
+
+    fetchDirectoryStatus();
+  }, [fetchDirectoryStatus]);
+
+  useEffect(() => {
+    if (hasHydrated) {
+        try {
+            localStorage.setItem('projectFileName', JSON.stringify(projectFileName));
+            localStorage.setItem('projectFileSource', JSON.stringify(projectFileSource));
+            localStorage.setItem('dataFileName', JSON.stringify(dataFileName));
+            localStorage.setItem('editedData', JSON.stringify(editedData));
+            localStorage.setItem('editedHeaders', JSON.stringify(editedHeaders));
+            localStorage.setItem('dependencyScanResult', JSON.stringify(dependencyScanResult));
+        } catch (error) {
+            console.warn(`Error writing to localStorage:`, error);
+        }
+    }
+  }, [projectFileName, projectFileSource, dataFileName, editedData, editedHeaders, dependencyScanResult, hasHydrated]);
+  
+  const clearProjectFile = useCallback(() => {
+    setProjectFileName(null);
+    setProjectFileSource(null);
+  }, []);
+
+  const clearDataFile = useCallback(() => {
+    setDataFileName(null);
+    setEditedData([]);
+    setEditedHeaders([]);
+  }, []);
+  
   const addLog = useCallback((message: string) => {
     const timestamp = new Date().toLocaleTimeString();
     setLogs(prev => [...prev, `[${timestamp}] ${message}`]);
@@ -616,25 +637,6 @@ export function ExecutionProvider({ children }: { children: ReactNode }) {
     startInstallation();
 
   }, [toast, scanDependencies]);
-  
-  const fetchDirectoryStatus = useCallback(async () => {
-    try {
-        const response = await fetch('/api/test-directory-status');
-        const data: DirectoryStatus = await response.json();
-        setDirectoryStatus(data);
-        if (data.configured) {
-            fetchSuites();
-        } else {
-            setTestSuites([]);
-        }
-    } catch (e) {
-        setDirectoryStatus({
-            status: 'error',
-            configured: false,
-            message: 'Failed to connect to the backend server to get directory status.'
-        })
-    }
-  }, [fetchSuites]);
 
   const discoverDirectories = useCallback(async () => {
     setIsDiscovering(true);
@@ -735,3 +737,5 @@ export function useExecutionContext() {
   }
   return context;
 }
+
+    
