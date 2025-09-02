@@ -3,6 +3,7 @@
 
 import * as React from 'react';
 import { useRouter } from 'next/navigation';
+import JSZip from 'jszip';
 import {
   Card,
   CardContent,
@@ -14,11 +15,12 @@ import {
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Button, buttonVariants } from '@/components/ui/button';
-import { UploadCloud, Pencil, FolderUp, FileSpreadsheet, GitBranch } from 'lucide-react';
+import { UploadCloud, Pencil, FolderUp, FileSpreadsheet, GitBranch, Loader2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useExecutionContext } from '@/contexts/execution-context';
 import { Skeleton } from '../ui/skeleton';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../ui/tabs';
+import { useToast } from '@/hooks/use-toast';
 
 type ProjectUploadProps = {
     projectFileName: string | null;
@@ -40,13 +42,61 @@ export function ProjectUpload({
     onClearDataFile,
 }: ProjectUploadProps) {
   const router = useRouter();
+  const { toast } = useToast();
   const { hasHydrated, handleGitImport } = useExecutionContext();
   const [gitUrl, setGitUrl] = React.useState('');
+  const [isUploading, setIsUploading] = React.useState(false);
 
-  const handleProjectFolderChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleProjectFolderChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
-    if (files && files.length > 0) {
-      onProjectFileChange(files);
+    if (!files || files.length === 0) return;
+    
+    setIsUploading(true);
+    toast({ title: 'Zipping project folder...', description: 'Please wait, this may take a moment for large projects.' });
+
+    try {
+        const zip = new JSZip();
+        const rootFolderName = files[0].webkitRelativePath.split('/')[0];
+        const root = zip.folder(rootFolderName);
+
+        if (!root) {
+            throw new Error("Could not create zip folder.");
+        }
+
+        for (let i = 0; i < files.length; i++) {
+            const file = files[i];
+            const relativePath = file.webkitRelativePath;
+            // We want to keep the root folder in the zip, so we don't strip it.
+            root.file(relativePath.substring(rootFolderName.length + 1), file);
+        }
+
+        const zipBlob = await zip.generateAsync({ type: 'blob' });
+        const zipFile = new File([zipBlob], `${rootFolderName}.zip`, { type: 'application/zip' });
+
+        const formData = new FormData();
+        formData.append('project', zipFile);
+
+        const response = await fetch('/api/upload-project', {
+            method: 'POST',
+            body: formData,
+        });
+
+        if (!response.ok) {
+            const errorData = await response.json();
+            throw new Error(errorData.error || 'Failed to upload project to the backend.');
+        }
+
+        await onProjectFileChange(files);
+
+    } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : 'An unknown error occurred';
+        toast({
+            variant: 'destructive',
+            title: 'Project Upload Failed',
+            description: errorMessage,
+        });
+    } finally {
+        setIsUploading(false);
     }
   };
   
@@ -90,7 +140,7 @@ export function ProjectUpload({
         <CardHeader>
           <CardTitle className="font-headline">Load Project</CardTitle>
           <CardDescription>
-            Choose a local project folder or import from a Git repository.
+            Choose a local project folder to upload it to the execution server.
           </CardDescription>
         </CardHeader>
         
@@ -99,9 +149,8 @@ export function ProjectUpload({
         ) : !projectFileName ? (
           <CardContent className="pt-6">
             <Tabs defaultValue="folder">
-              <TabsList className="grid w-full grid-cols-2">
-                <TabsTrigger value="folder"><FolderUp className="mr-2 h-4 w-4"/>Local Folder</TabsTrigger>
-                <TabsTrigger value="git"><GitBranch className="mr-2 h-4 w-4"/>Git Repository</TabsTrigger>
+              <TabsList className="grid w-full grid-cols-1">
+                <TabsTrigger value="folder"><FolderUp className="mr-2 h-4 w-4"/>Upload Local Project</TabsTrigger>
               </TabsList>
               <TabsContent value="folder" className="pt-4">
                 <div className="grid gap-2">
@@ -109,10 +158,11 @@ export function ProjectUpload({
                      <div className="flex items-center gap-2">
                         <Label htmlFor="project-folder-input" className={cn(
                           "flex items-center gap-2 cursor-pointer",
-                          buttonVariants({ variant: 'outline' })
+                          buttonVariants({ variant: 'outline' }),
+                          isUploading && "cursor-not-allowed opacity-50"
                         )}>
-                          <FolderUp className="h-5 w-5" />
-                          <span className="font-bold">Choose Folder</span>
+                          {isUploading ? <Loader2 className="h-5 w-5 animate-spin" /> : <FolderUp className="h-5 w-5" />}
+                          <span className="font-bold">{isUploading ? 'Uploading...' : 'Choose Folder'}</span>
                         </Label>
                         <Input
                             id="project-folder-input"
@@ -121,23 +171,11 @@ export function ProjectUpload({
                             onChange={handleProjectFolderChange}
                             webkitdirectory="true"
                             directory=""
+                            disabled={isUploading}
                         />
                     </div>
+                     <p className="text-xs text-muted-foreground">This will zip and upload the selected folder to the server.</p>
                 </div>
-              </TabsContent>
-              <TabsContent value="git" className="pt-4">
-                 <div className="grid gap-2">
-                    <Label htmlFor="git-url">Git Repository URL</Label>
-                    <div className="flex items-center gap-2">
-                        <Input 
-                            id="git-url" 
-                            placeholder="https://github.com/user/repo.git"
-                            value={gitUrl}
-                            onChange={(e) => setGitUrl(e.target.value)}
-                        />
-                        <Button onClick={handleGitImportClick} disabled={!gitUrl}>Import</Button>
-                    </div>
-                 </div>
               </TabsContent>
             </Tabs>
           </CardContent>
@@ -219,3 +257,5 @@ export function ProjectUpload({
     </div>
   );
 }
+
+    
