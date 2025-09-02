@@ -426,7 +426,7 @@ def upload_project():
             shutil.rmtree(PROJECTS_DIR)
         os.makedirs(PROJECTS_DIR)
         
-        project_root_name = relative_paths[0].split('/')[0]
+        project_root_name = relative_paths[0].split('/')[0] if relative_paths else 'project'
         project_root_path = os.path.join(PROJECTS_DIR, project_root_name)
 
         for i, file in enumerate(files):
@@ -801,5 +801,3 @@ if __name__ == '__main__':
     print("Starting server on http://127.0.0.1:5001")
     logging.info("Starting Flask server on http://127.0.0.1:5001")
     app.run(host='127.0.0.1', port=5001, debug=True)
-
-    

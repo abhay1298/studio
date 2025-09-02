@@ -15,7 +15,7 @@ export async function POST(req: NextRequest) {
       body: formData,
       // NOTE: Do not set 'Content-Type' header here.
       // The browser will automatically set it to 'multipart/form-data'
-      // with the correct boundary.
+      // with the correct boundary when given a FormData object.
     });
 
     if (!response.ok) {
@@ -38,5 +38,3 @@ export async function POST(req: NextRequest) {
     );
   }
 }
-
-    

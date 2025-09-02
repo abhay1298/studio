@@ -526,7 +526,12 @@ export function ExecutionProvider({ children }: { children: ReactNode }) {
             }
         }
         
-        const response = await fetch('/api/upload-project', { method: 'POST', body: formData });
+        // The browser will set the 'Content-Type' to 'multipart/form-data' automatically.
+        // Do not set it manually.
+        const response = await fetch('/api/upload-project', { 
+            method: 'POST', 
+            body: formData 
+        });
 
         if (!response.ok) {
             const errorData = await response.json();
@@ -741,5 +746,3 @@ export function useExecutionContext() {
   }
   return context;
 }
-
-    
