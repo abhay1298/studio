@@ -2,42 +2,36 @@
 "use client";
 
 import { DependencyChecker } from "@/components/dashboard/dependency-checker";
-import { ProjectUpload } from "@/components/dashboard/project-upload";
+import { TestDirectoryConfigurator } from "@/components/dashboard/test-directory-configurator";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { useExecutionContext } from "@/contexts/execution-context";
 
 export default function ProjectManagementPage() {
-  const { 
-    projectFileName,
-    projectFileSource,
-    dataFileName,
-    handleProjectFileUpload,
-    handleDataFileUpload,
-    clearProjectFile,
-    clearDataFile,
-  } = useExecutionContext();
 
   return (
     <div className="space-y-6">
       <h1 className="font-headline text-3xl font-bold tracking-tight">
-        Project Management
+        Project Configuration
       </h1>
-      <ProjectUpload 
-        projectFileName={projectFileName}
-        projectFileSource={projectFileSource}
-        dataFileName={dataFileName}
-        onProjectFileChange={handleProjectFileUpload}
-        onDataFileChange={handleDataFileUpload}
-        onClearProjectFile={clearProjectFile}
-        onClearDataFile={clearDataFile}
-      />
+      
+      <Card>
+        <CardHeader>
+          <CardTitle className="font-headline">Test Directory Configuration</CardTitle>
+          <CardDescription>
+            Configure the connection to your local Robot Framework project. The server will attempt to auto-discover directories containing `.robot` files.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <TestDirectoryConfigurator />
+        </CardContent>
+      </Card>
+
       <Card>
         <CardHeader>
             <CardTitle className="font-headline">Dependency Management</CardTitle>
-            <CardDescription>Scan your project to find and install required Python packages from `requirements.txt` files.</CardDescription>
+            <CardDescription>Scan your configured project to find and install required Python packages from `requirements.txt` files.</CardDescription>
         </CardHeader>
         <CardContent>
-            <DependencyChecker projectIsLoaded={!!projectFileName}/>
+            <DependencyChecker />
         </CardContent>
       </Card>
     </div>
