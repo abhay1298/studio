@@ -2,22 +2,43 @@
 "use client";
 
 import { DependencyChecker } from "@/components/dashboard/dependency-checker";
+import { ProjectUpload } from "@/components/dashboard/project-upload";
 import { TestDirectoryConfigurator } from "@/components/dashboard/test-directory-configurator";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { useExecutionContext } from "@/contexts/execution-context";
 
 export default function ProjectManagementPage() {
+  const { 
+    dataFileName,
+    handleDataFileUpload,
+    clearDataFile,
+    handleProjectFileUpload,
+    clearProjectFile,
+    projectFileName,
+    projectFileSource,
+  } = useExecutionContext();
 
   return (
     <div className="space-y-6">
       <h1 className="font-headline text-3xl font-bold tracking-tight">
-        Project Configuration
+        Project Management
       </h1>
       
+      <ProjectUpload 
+        onProjectFileChange={handleProjectFileUpload}
+        onDataFileChange={handleDataFileUpload}
+        onClearProjectFile={clearProjectFile}
+        onClearDataFile={clearDataFile}
+        projectFileName={projectFileName}
+        projectFileSource={projectFileSource}
+        dataFileName={dataFileName}
+      />
+
       <Card>
         <CardHeader>
           <CardTitle className="font-headline">Test Directory Configuration</CardTitle>
           <CardDescription>
-            Configure the connection to your local Robot Framework project. The server will attempt to auto-discover directories containing `.robot` files.
+            Verify the active test directory on the backend server. Use the "Discover" button to switch between different test folders within your uploaded project.
           </CardDescription>
         </CardHeader>
         <CardContent>
