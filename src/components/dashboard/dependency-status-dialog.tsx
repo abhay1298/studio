@@ -10,106 +10,64 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { Loader2, PackageCheck, PackagePlus, AlertTriangle, XCircle } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "../ui/scroll-area";
-import type { DependencyScanResult } from './dependency-checker';
-import { Badge } from "../ui/badge";
+import { CheckCircle2, AlertTriangle, PackagePlus } from 'lucide-react';
+import type { DependencyStatus } from './dependency-checker';
 
 type DependencyStatusDialogProps = {
   isOpen: boolean;
   onOpenChange: (isOpen: boolean) => void;
-  result: DependencyScanResult | null;
-  onInstall: () => void;
-  isInstalling: boolean;
+  statuses: DependencyStatus[];
 };
 
-export function DependencyStatusDialog({ 
-    isOpen, 
-    onOpenChange, 
-    result, 
-    onInstall,
-    isInstalling
-}: DependencyStatusDialogProps) {
-
-  if (!result) return null;
-
-  const { missing_packages, version_conflicts } = result;
-  const hasMissing = missing_packages.length > 0;
-  const hasConflicts = version_conflicts.length > 0;
-  
-  const getIssueTitle = () => {
-    if (hasMissing && hasConflicts) return "Missing Packages & Version Conflicts";
-    if (hasMissing) return "Missing Dependencies";
-    if (hasConflicts) return "Version Conflicts";
-    return "Dependency Status"
-  }
-  
-  const getIcon = () => {
-    if (hasMissing) return <AlertTriangle className="text-destructive" />;
-    if (hasConflicts) return <XCircle className="text-destructive" />;
-    return <PackageCheck className="text-green-500" />;
-  }
+export function DependencyStatusDialog({ isOpen, onOpenChange, statuses }: DependencyStatusDialogProps) {
+  const missingCount = statuses.filter(s => s.status === 'missing').length;
 
   return (
     <Dialog open={isOpen} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-lg">
+      <DialogContent className="sm:max-w-md">
         <DialogHeader>
-          <DialogTitle className="flex items-center gap-2 font-headline">
-            {getIcon()}
-            {getIssueTitle()}
-          </DialogTitle>
+          <DialogTitle className="flex items-center gap-2">
+            {missingCount > 0 ? (
+                <AlertTriangle className="text-destructive"/>
+            ) : (
+                <CheckCircle2 className="text-green-500" />
+            )}
+            Dependency Scan Results
+            </DialogTitle>
           <DialogDescription>
-            The backend scan found the following issues with your project's dependencies.
+            {missingCount > 0 
+                ? `The scan found ${missingCount} missing package(s).` 
+                : 'All dependencies are installed and ready to go.'}
           </DialogDescription>
         </DialogHeader>
-
         <ScrollArea className="max-h-80 -mx-6 px-6">
-            <div className="space-y-4 py-2">
-                {hasMissing && (
-                    <div>
-                        <h3 className="font-semibold mb-2">Missing Packages</h3>
-                        <div className="space-y-2">
-                           {missing_packages.map((pkg) => (
-                                <div key={pkg.name} className="flex items-center justify-between p-2 rounded-lg bg-muted/50">
-                                    <div className="font-mono text-sm">
-                                        <p>{pkg.name}</p>
-                                        <p className="text-xs text-muted-foreground">{pkg.source_file}</p>
-                                    </div>
-                                    <Badge variant="destructive">Missing</Badge>
-                                </div>
-                           ))}
-                        </div>
-                    </div>
-                )}
-                {hasConflicts && (
-                     <div>
-                        <h3 className="font-semibold mb-2">Version Conflicts</h3>
-                        <div className="space-y-2">
-                            {version_conflicts.map((pkg) => (
-                                <div key={pkg.name} className="flex items-center justify-between p-2 rounded-lg bg-muted/50">
-                                    <div className="font-mono text-sm">
-                                        <p>{pkg.name}</p>
-                                        <p className="text-xs text-muted-foreground">
-                                            Required: {pkg.required_spec}, Installed: {pkg.installed_version}
-                                        </p>
-                                    </div>
-                                    <Badge variant="destructive">Conflict</Badge>
-                                </div>
-                            ))}
-                        </div>
-                     </div>
-                )}
-            </div>
+          <div className="space-y-2 py-2">
+            {statuses.map((dep) => (
+              <div
+                key={dep.library}
+                className="flex items-center justify-between rounded-lg bg-muted/50 p-3"
+              >
+                <span className="font-mono text-sm">{dep.library}</span>
+                <Badge
+                  variant={dep.status === 'installed' ? 'default' : 'destructive'}
+                  className={dep.status === 'installed' ? 'border-transparent bg-green-500/20 text-green-700 dark:bg-green-500/10 dark:text-green-400' : ''}
+                >
+                  {dep.status}
+                </Badge>
+              </div>
+            ))}
+          </div>
         </ScrollArea>
-
         <DialogFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)}>
-            Close
-          </Button>
-          <Button onClick={onInstall} disabled={isInstalling || !hasMissing}>
-            {isInstalling ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <PackagePlus className="mr-2 h-4 w-4" />}
-            Install {missing_packages.length} Missing
-          </Button>
+          <Button variant="outline" onClick={() => onOpenChange(false)}>Close</Button>
+           {missingCount > 0 && (
+                <Button>
+                    <PackagePlus className="mr-2 h-4 w-4" />
+                    Install Missing Libraries
+                </Button>
+           )}
         </DialogFooter>
       </DialogContent>
     </Dialog>

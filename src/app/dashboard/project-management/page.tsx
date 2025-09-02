@@ -4,14 +4,8 @@
 import { DependencyChecker } from "@/components/dashboard/dependency-checker";
 import { ProjectUpload } from "@/components/dashboard/project-upload";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { useExecutionContext } from "@/contexts/execution-context";
 
 export default function ProjectManagementPage() {
-  const { 
-    dataFileName,
-    handleDataFileUpload,
-    clearDataFile,
-  } = useExecutionContext();
 
   return (
     <div className="space-y-6">
@@ -21,17 +15,13 @@ export default function ProjectManagementPage() {
       
       <Card>
         <CardHeader>
-          <CardTitle className="font-headline">File Upload</CardTitle>
+          <CardTitle className="font-headline">Project Upload</CardTitle>
           <CardDescription>
-            Upload a CSV or Excel file for data-driven testing with the Orchestrator.
+            Upload your entire Robot Framework project as a single .zip file.
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <ProjectUpload 
-            onFileChange={handleDataFileUpload}
-            onClear={clearDataFile}
-            fileName={dataFileName}
-          />
+          <ProjectUpload />
         </CardContent>
       </Card>
 

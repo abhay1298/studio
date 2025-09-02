@@ -3,11 +3,8 @@
 
 import { createContext, useContext, useState, useCallback, ReactNode, useEffect, Dispatch, SetStateAction } from 'react';
 import { useToast } from "@/hooks/use-toast";
-import { CheckCircle2, FileCheck2, XCircle, StopCircle, Loader2 } from 'lucide-react';
+import { CheckCircle2, FileCheck2, XCircle, StopCircle } from 'lucide-react';
 import type { TestSuite } from '@/components/dashboard/project-explorer';
-import * as XLSX from 'xlsx';
-import Papa from 'papaparse';
-
 
 type ExecutionStatus = "idle" | "running" | "success" | "failed" | "stopped";
 type RunConfig = {
@@ -26,6 +23,7 @@ interface ExecutionContextType {
   runConfig: RunConfig;
   
   dataFileName: string | null;
+  setDataFileName: Dispatch<SetStateAction<string | null>>;
   
   testSuites: TestSuite[];
   isLoadingSuites: boolean;
@@ -43,9 +41,6 @@ interface ExecutionContextType {
   handleRun: (runType: string) => Promise<void>;
   handleStop: () => Promise<void>;
   clearLogs: () => void;
-
-  handleDataFileUpload: (file: File | null) => void;
-  clearDataFile: () => void;
 }
 
 const ExecutionContext = createContext<ExecutionContextType | undefined>(undefined);
@@ -64,14 +59,6 @@ const getInitialState = <T extends unknown>(key: string, defaultValue: T): T => 
     }
 };
 
-const readFileAsArrayBuffer = (file: File): Promise<ArrayBuffer> => {
-    return new Promise((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onload = () => resolve(reader.result as ArrayBuffer);
-        reader.onerror = reject;
-        reader.readAsArrayBuffer(file);
-    });
-};
 
 export function ExecutionProvider({ children }: { children: ReactNode }) {
   const [status, setStatus] = useState<ExecutionStatus>("idle");
@@ -104,7 +91,6 @@ export function ExecutionProvider({ children }: { children: ReactNode }) {
       const data = await response.json();
 
       if (!response.ok) {
-        // If the API returns a JSON error, use that message
         const errorMessage = data.error || `Failed to fetch suites. Status: ${response.status}`;
         throw new Error(errorMessage);
       }
@@ -112,70 +98,12 @@ export function ExecutionProvider({ children }: { children: ReactNode }) {
       setTestSuites(data);
     } catch (e: any) {
       console.error("Failed to fetch test suites:", e);
-      // Set the error state to be displayed in the UI
       setSuiteLoadError(e.message || 'An unknown error occurred while fetching suites.');
     } finally {
       setIsLoadingSuites(false);
     }
   }, []);
 
-  const handleDataFileUpload = useCallback(async (file: File | null) => {
-    if (!file) {
-      setDataFileName(null);
-      setEditedData([]);
-      setEditedHeaders([]);
-      return;
-    }
-    
-    if (!file.name.endsWith('.csv') && !file.name.endsWith('.xlsx')) {
-        toast({
-            variant: 'destructive',
-            title: 'Invalid File Type',
-            description: 'Please upload a .csv or .xlsx file.',
-        });
-        return;
-    }
-    
-    setDataFileName(file.name);
-
-    try {
-      const arrayBuffer = await readFileAsArrayBuffer(file);
-      const workbook = XLSX.read(arrayBuffer, { type: 'array' });
-      const sheetName = workbook.SheetNames[0];
-      const worksheet = workbook.Sheets[sheetName];
-      const data: any[][] = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
-      
-      if (data.length > 0) {
-        setEditedHeaders(data[0].map(String));
-        setEditedData(data.slice(1));
-        toast({
-          title: 'Data File Loaded',
-          description: `Successfully parsed ${file.name}.`,
-          action: <FileCheck2 className="text-green-500" />,
-        });
-      } else {
-        setEditedHeaders([]);
-        setEditedData([]);
-        toast({
-          variant: 'destructive',
-          title: 'Empty File',
-          description: 'The uploaded file appears to be empty.',
-        });
-      }
-
-    } catch (error) {
-      console.error('Error parsing file:', error);
-      toast({
-        variant: 'destructive',
-        title: 'File Read Error',
-        description: 'Could not read or parse the uploaded file.',
-      });
-      setDataFileName(null);
-      setEditedData([]);
-      setEditedHeaders([]);
-    }
-  }, [toast]);
-  
   useEffect(() => {
     setDataFileName(getInitialState('dataFileName', null));
     setEditedData(getInitialState('editedData', []));
@@ -197,11 +125,6 @@ export function ExecutionProvider({ children }: { children: ReactNode }) {
     }
   }, [dataFileName, editedData, editedHeaders, hasHydrated]);
   
-  const clearDataFile = useCallback(() => {
-    setDataFileName(null);
-    setEditedData([]);
-    setEditedHeaders([]);
-  }, []);
   
   const addLog = useCallback((message: string) => {
     const timestamp = new Date().toLocaleTimeString();
@@ -419,6 +342,7 @@ export function ExecutionProvider({ children }: { children: ReactNode }) {
     lastFailedLogs,
     runConfig,
     dataFileName,
+    setDataFileName,
     testSuites,
     isLoadingSuites,
     suiteLoadError,
@@ -432,8 +356,6 @@ export function ExecutionProvider({ children }: { children: ReactNode }) {
     handleRun,
     handleStop,
     clearLogs,
-    handleDataFileUpload,
-    clearDataFile,
   };
 
   return (
@@ -450,5 +372,3 @@ export function useExecutionContext() {
   }
   return context;
 }
-
-    
