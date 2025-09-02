@@ -411,12 +411,14 @@ def find_matching_report_file(requested_filename, reports_dir):
 @app.route('/upload-project', methods=['POST'])
 def upload_project():
     global TESTS_DIRECTORY
-    if 'project' not in request.files:
-        return jsonify({'error': 'No project file part'}), 400
-    
-    file = request.files['project']
-    if file.filename == '':
-        return jsonify({'error': 'No selected file'}), 400
+    if 'files' not in request.files:
+        return jsonify({'error': 'No file part in the request'}), 400
+
+    files = request.files.getlist('files')
+    relative_paths = request.form.getlist('relativePaths')
+
+    if not files or not relative_paths or len(files) != len(relative_paths):
+        return jsonify({'error': 'Mismatch between files and paths or missing data'}), 400
 
     try:
         # Clean up any old project
@@ -424,25 +426,29 @@ def upload_project():
             shutil.rmtree(PROJECTS_DIR)
         os.makedirs(PROJECTS_DIR)
         
-        zip_path = os.path.join(PROJECTS_DIR, file.filename)
-        file.save(zip_path)
-        logging.info(f"Saved uploaded project zip to {zip_path}")
-        
-        # Unzip the project
-        with zipfile.ZipFile(zip_path, 'r') as zip_ref:
-            zip_ref.extractall(PROJECTS_DIR)
-        
-        os.remove(zip_path) # Clean up the zip file
-        logging.info(f"Unzipped project to {PROJECTS_DIR}")
+        project_root_name = relative_paths[0].split('/')[0]
+        project_root_path = os.path.join(PROJECTS_DIR, project_root_name)
 
-        # Find the root directory of the unzipped project
-        project_root = os.path.join(PROJECTS_DIR, os.path.splitext(file.filename)[0])
-        if not os.path.isdir(project_root):
-             # Handle cases where the zip doesn't have a root folder
-            project_root = PROJECTS_DIR
+        for i, file in enumerate(files):
+            relative_path = relative_paths[i]
+            # Sanitize the path to prevent directory traversal
+            sanitized_relative_path = os.path.normpath(relative_path).lstrip('./\\')
+            if '..' in sanitized_relative_path.split(os.path.sep):
+                logging.warning(f"Skipping potentially malicious path: {relative_path}")
+                continue
+            
+            # Reconstruct the full destination path
+            dest_path = os.path.join(PROJECTS_DIR, sanitized_relative_path)
+            
+            # Create subdirectories if they don't exist
+            os.makedirs(os.path.dirname(dest_path), exist_ok=True)
+            
+            file.save(dest_path)
 
-        # Automatically find and set the test directory
-        TESTS_DIRECTORY = find_test_directory_in_project(project_root)
+        logging.info(f"Successfully uploaded and reconstructed project at {project_root_path}")
+
+        # Automatically find and set the test directory within the new project
+        TESTS_DIRECTORY = find_test_directory_in_project(project_root_path)
         save_config()
         
         return jsonify({'status': 'success', 'message': f'Project uploaded and test directory set to {TESTS_DIRECTORY}'})
@@ -795,3 +801,5 @@ if __name__ == '__main__':
     print("Starting server on http://127.0.0.1:5001")
     logging.info("Starting Flask server on http://127.0.0.1:5001")
     app.run(host='127.0.0.1', port=5001, debug=True)
+
+    

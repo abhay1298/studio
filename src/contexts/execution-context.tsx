@@ -6,7 +6,6 @@ import { useToast } from "@/hooks/use-toast";
 import { CheckCircle2, FileCheck2, XCircle, StopCircle, Loader2, FolderCheck, UploadCloud, AlertTriangle } from 'lucide-react';
 import type { TestSuite } from '@/components/dashboard/project-explorer';
 import type { DependencyScanResult } from '@/components/dashboard/dependency-checker';
-import JSZip from 'jszip';
 import * as XLSX from 'xlsx';
 import Papa from 'papaparse';
 
@@ -202,6 +201,63 @@ export function ExecutionProvider({ children }: { children: ReactNode }) {
     }
   }, [fetchSuites]);
 
+  const handleDataFileUpload = useCallback(async (file: File | null) => {
+    if (!file) {
+      setDataFileName(null);
+      setEditedData([]);
+      setEditedHeaders([]);
+      return;
+    }
+    
+    if (!file.name.endsWith('.csv') && !file.name.endsWith('.xlsx')) {
+        toast({
+            variant: 'destructive',
+            title: 'Invalid File Type',
+            description: 'Please upload a .csv or .xlsx file.',
+        });
+        return;
+    }
+    
+    setDataFileName(file.name);
+
+    try {
+      const arrayBuffer = await readFileAsArrayBuffer(file);
+      const workbook = XLSX.read(arrayBuffer, { type: 'array' });
+      const sheetName = workbook.SheetNames[0];
+      const worksheet = workbook.Sheets[sheetName];
+      const data: any[][] = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
+      
+      if (data.length > 0) {
+        setEditedHeaders(data[0].map(String));
+        setEditedData(data.slice(1));
+        toast({
+          title: 'Data File Loaded',
+          description: `Successfully parsed ${file.name}.`,
+          action: <FileCheck2 className="text-green-500" />,
+        });
+      } else {
+        setEditedHeaders([]);
+        setEditedData([]);
+        toast({
+          variant: 'destructive',
+          title: 'Empty File',
+          description: 'The uploaded file appears to be empty.',
+        });
+      }
+
+    } catch (error) {
+      console.error('Error parsing file:', error);
+      toast({
+        variant: 'destructive',
+        title: 'File Read Error',
+        description: 'Could not read or parse the uploaded file.',
+      });
+      setDataFileName(null);
+      setEditedData([]);
+      setEditedHeaders([]);
+    }
+  }, [toast]);
+  
   useEffect(() => {
     setProjectFileName(getInitialState('projectFileName', null));
     setProjectFileSource(getInitialState('projectFileSource', null));
@@ -450,97 +506,41 @@ export function ExecutionProvider({ children }: { children: ReactNode }) {
     }
   }, [addLog, toast]);
 
-  const handleDataFileUpload = useCallback(async (file: File | null) => {
-    if (!file) {
-      clearDataFile();
-      return;
-    }
-    
-    if (!file.name.endsWith('.csv') && !file.name.endsWith('.xlsx')) {
-        toast({
-            variant: 'destructive',
-            title: 'Invalid File Type',
-            description: 'Please upload a .csv or .xlsx file.',
-        });
-        return;
-    }
-    
-    setDataFileName(file.name);
-
-    try {
-      const arrayBuffer = await readFileAsArrayBuffer(file);
-      const workbook = XLSX.read(arrayBuffer, { type: 'array' });
-      const sheetName = workbook.SheetNames[0];
-      const worksheet = workbook.Sheets[sheetName];
-      const data: any[][] = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
-      
-      if (data.length > 0) {
-        setEditedHeaders(data[0]);
-        setEditedData(data.slice(1));
-        toast({
-          title: 'Data File Loaded',
-          description: `Successfully parsed ${file.name}.`,
-          action: <FileCheck2 className="text-green-500" />,
-        });
-      } else {
-        toast({
-          variant: 'destructive',
-          title: 'Empty File',
-          description: 'The uploaded file appears to be empty.',
-        });
-      }
-
-    } catch (error) {
-      console.error('Error parsing file:', error);
-      toast({
-        variant: 'destructive',
-        title: 'File Read Error',
-        description: 'Could not read or parse the uploaded file.',
-      });
-      clearDataFile();
-    }
-  }, [clearDataFile, toast]);
-
   const handleProjectFileUpload = useCallback(async (files: FileList) => {
     setIsUploadingProject(true);
-    toast({ title: 'Zipping and Uploading Project...', description: 'Please wait...', action: <Loader2 className="animate-spin" /> });
+    toast({ title: 'Uploading Project...', description: 'Please wait...', action: <Loader2 className="animate-spin" /> });
     
     try {
-        const zip = new JSZip();
-        const rootFolderName = files[0].webkitRelativePath.split('/')[0];
-        const root = zip.folder(rootFolderName);
+        if (!files || files.length === 0) {
+            throw new Error("No files selected for upload.");
+        }
 
-        if (!root) throw new Error("Could not create zip folder.");
-
+        const formData = new FormData();
         let dataFileFound: File | null = null;
+        const projectRootName = files[0].webkitRelativePath.split('/')[0];
+        
         for (let i = 0; i < files.length; i++) {
             const file = files[i];
-            const relativePath = file.webkitRelativePath.substring(rootFolderName.length + 1);
-            root.file(relativePath, file);
-
+            formData.append('files', file);
+            formData.append('relativePaths', file.webkitRelativePath);
+            
             if (!dataFileFound && (file.name.endsWith('.csv') || file.name.endsWith('.xlsx'))) {
               dataFileFound = file;
             }
         }
-
-        const zipBlob = await zip.generateAsync({ type: 'blob' });
-        const zipFile = new File([zipBlob], `${rootFolderName}.zip`, { type: 'application/zip' });
-
-        const formData = new FormData();
-        formData.append('project', zipFile);
-
+        
         const response = await fetch('/api/upload-project', { method: 'POST', body: formData });
+
         if (!response.ok) {
             const errorData = await response.json();
             throw new Error(errorData.error || 'Failed to upload project to backend.');
         }
         
-        const result = await response.json();
-        setProjectFileName(rootFolderName);
+        setProjectFileName(projectRootName);
         setProjectFileSource('local');
-        toast({ title: "Project Uploaded", description: `"${rootFolderName}" is now the active project.`, action: <UploadCloud className="text-primary"/> });
+        toast({ title: "Project Uploaded", description: `"${projectRootName}" is now the active project.`, action: <UploadCloud className="text-primary"/> });
 
-        await fetchDirectoryStatus(); // This will trigger a suite refresh
+        await fetchDirectoryStatus(); 
 
         if (dataFileFound) {
           toast({ title: "Data File Found!", description: `Automatically loaded "${dataFileFound.name}" from your project.`, action: <FileCheck2 className="text-green-500" /> });
@@ -669,7 +669,7 @@ export function ExecutionProvider({ children }: { children: ReactNode }) {
         }
         toast({
             title: 'Directory Configured',
-            description: `Active test directory has been set. Found ${data.robot_file_count} .robot files.`,
+            description: `Active test directory has been set.`,
             action: <FolderCheck className="text-green-500" />
         });
         await fetchDirectoryStatus();

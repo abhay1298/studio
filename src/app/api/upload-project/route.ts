@@ -5,20 +5,17 @@ const EXECUTION_BACKEND_URL = process.env.EXECUTION_BACKEND_URL || 'http://local
 
 export async function POST(req: NextRequest) {
   try {
+    // The request from the browser will be a FormData object
     const formData = await req.formData();
-    const file = formData.get('project') as File | null;
-
-    if (!file) {
-      return NextResponse.json({ error: 'No file provided.' }, { status: 400 });
-    }
-
-    const backendFormData = new FormData();
-    backendFormData.append('project', file, file.name);
-
+    
+    // We forward this FormData directly to the Python backend.
     const backendUrl = `${EXECUTION_BACKEND_URL}/upload-project`;
     const response = await fetch(backendUrl, {
       method: 'POST',
-      body: backendFormData,
+      body: formData,
+      // NOTE: Do not set 'Content-Type' header here.
+      // The browser will automatically set it to 'multipart/form-data'
+      // with the correct boundary.
     });
 
     if (!response.ok) {
