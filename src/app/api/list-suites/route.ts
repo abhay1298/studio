@@ -1,4 +1,3 @@
-
 import { NextResponse } from 'next/server';
 
 const EXECUTION_BACKEND_URL = process.env.EXECUTION_BACKEND_URL || 'http://localhost:5001';
@@ -20,8 +19,10 @@ export async function GET() {
   } catch (error) {
     console.error('Failed to list suites:', error);
     const errorMessage = error instanceof Error ? error.message : String(error);
-    return NextResponse.json({ error: 'Failed to connect to backend service to list suites.', details: errorMessage }, { status: 500 });
+    // This is the key change: ensuring a JSON response even on connection failure
+    return NextResponse.json(
+        { error: 'Failed to connect to the backend service. Is the Python server running?', details: errorMessage }, 
+        { status: 500 }
+    );
   }
 }
-
-    
