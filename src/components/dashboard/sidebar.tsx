@@ -73,5 +73,3 @@ export function DashboardSidebar() {
     </Sidebar>
   );
 }
-
-    
