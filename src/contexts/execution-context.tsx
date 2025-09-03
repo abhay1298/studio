@@ -2,10 +2,8 @@
 
 import { createContext, useContext, useState, useCallback, ReactNode, useEffect, Dispatch, SetStateAction } from 'react';
 import { useToast } from "@/hooks/use-toast";
-import { CheckCircle2, FileCheck2, XCircle, StopCircle, UploadCloud } from 'lucide-react';
+import { CheckCircle2, XCircle, StopCircle } from 'lucide-react';
 import type { TestSuite } from '@/components/dashboard/project-explorer';
-import * as XLSX from 'xlsx';
-import Papa from 'papaparse';
 
 type ExecutionStatus = "idle" | "running" | "success" | "failed" | "stopped";
 type RunConfig = {
@@ -32,10 +30,6 @@ interface ExecutionContextType {
   activeTestDirectory: string | null;
   isTestDirectoryConfigured: boolean;
 
-  projectFile: File | null;
-  setProjectFile: Dispatch<SetStateAction<File | null>>;
-  projectUploadStatus: 'idle' | 'uploading' | 'success' | 'error';
-
   editedData: TableData;
   setEditedData: Dispatch<SetStateAction<TableData>>;
   editedHeaders: string[];
@@ -48,7 +42,6 @@ interface ExecutionContextType {
   handleInputChange: (field: keyof RunConfig, value: string) => void;
   handleRun: (runType: string) => Promise<void>;
   handleStop: () => Promise<void>;
-  handleProjectUpload: (file: File) => Promise<void>;
   addLog: (message: string) => void;
   clearLogs: () => void;
 }
@@ -89,10 +82,6 @@ export function ExecutionProvider({ children }: { children: ReactNode }) {
 
   const [activeTestDirectory, setActiveTestDirectory] = useState<string | null>(null);
   const [isTestDirectoryConfigured, setIsTestDirectoryConfigured] = useState(false);
-  
-  const [projectFile, setProjectFile] = useState<File | null>(null);
-  const [projectUploadStatus, setProjectUploadStatus] = useState<'idle' | 'uploading' | 'success' | 'error'>('idle');
-
 
   const [editedData, setEditedData] = useState<TableData>([]);
   const [editedHeaders, setEditedHeaders] = useState<string[]>([]);
@@ -107,9 +96,6 @@ export function ExecutionProvider({ children }: { children: ReactNode }) {
       if (response.ok) {
         setIsTestDirectoryConfigured(data.is_configured);
         setActiveTestDirectory(data.path);
-        if (data.is_configured) {
-            setProjectFile(null); // Clear file input if a project is already configured on the backend
-        }
       } else {
         setIsTestDirectoryConfigured(false);
         setActiveTestDirectory(null);
@@ -143,40 +129,6 @@ export function ExecutionProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
-  const handleProjectUpload = async (file: File) => {
-    setProjectUploadStatus('uploading');
-    const formData = new FormData();
-    formData.append('file', file);
-
-    try {
-        const response = await fetch('/api/upload-project', {
-            method: 'POST',
-            body: formData,
-        });
-
-        const result = await response.json();
-        if (!response.ok) {
-            throw new Error(result.error || 'Failed to upload project.');
-        }
-
-        toast({
-            title: 'Project Uploaded',
-            description: result.message,
-            action: <FileCheck2 className="text-green-500" />,
-        });
-        setProjectUploadStatus('success');
-        await fetchTestDirectoryStatus();
-        await fetchSuites();
-
-    } catch (err: any) {
-        setProjectUploadStatus('error');
-        toast({
-            variant: 'destructive',
-            title: 'Upload Failed',
-            description: err.message,
-        });
-    }
-  }
 
   useEffect(() => {
     setDataFileName(getInitialState('dataFileName', null));
@@ -422,9 +374,6 @@ export function ExecutionProvider({ children }: { children: ReactNode }) {
     suiteLoadError,
     activeTestDirectory,
     isTestDirectoryConfigured,
-    projectFile,
-    setProjectFile,
-    projectUploadStatus,
     editedData,
     setEditedData,
     editedHeaders,
@@ -435,7 +384,6 @@ export function ExecutionProvider({ children }: { children: ReactNode }) {
     handleInputChange,
     handleRun,
     handleStop,
-    handleProjectUpload,
     addLog,
     clearLogs,
   };
