@@ -140,11 +140,12 @@ def scan_dependencies():
         installed_packages = get_installed_packages()
         result['installed_packages_count'] = len(installed_packages)
         
-        project_root = os.path.dirname(os.path.abspath(TESTS_DIRECTORY)) if TESTS_DIRECTORY else SCRIPT_DIR
-        requirements_files = find_requirements_files(project_root)
-        # Also check the script's directory for good measure
-        requirements_files.extend(find_requirements_files(SCRIPT_DIR))
-        requirements_files = list(set(requirements_files)) # Remove duplicates
+        # This is the key fix: We search from the TESTS_DIRECTORY itself.
+        if not TESTS_DIRECTORY or not os.path.isdir(TESTS_DIRECTORY):
+            result['suggestions'].append("No active project directory to scan.")
+            return result
+            
+        requirements_files = find_requirements_files(TESTS_DIRECTORY)
         result['requirements_files'] = requirements_files
         
         if not requirements_files:
@@ -789,4 +790,6 @@ if __name__ == '__main__':
     app.run(host='127.0.0.1', port=5001, debug=True)
 
     
+    
+
     
