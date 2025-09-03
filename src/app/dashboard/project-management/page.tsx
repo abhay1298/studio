@@ -3,9 +3,12 @@
 
 import { DependencyChecker } from "@/components/dashboard/dependency-checker";
 import { GitCloneForm } from "@/components/dashboard/git-clone-form";
+import { ProjectUploadForm } from "@/components/dashboard/project-upload-form";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Link } from "lucide-react";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { FolderUp, GitBranch } from "lucide-react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import Link from 'next/link';
 
 export default function ProjectManagementPage() {
 
@@ -17,13 +20,24 @@ export default function ProjectManagementPage() {
 
       <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
         <Card className="lg:col-span-3">
+          <Tabs defaultValue="local">
             <CardHeader>
-                <CardTitle>Load Project from Git</CardTitle>
-                <CardDescription>Clone your Robot Framework project from a Git repository to get started.</CardDescription>
+                <CardTitle>Load Project</CardTitle>
+                <CardDescription>Load your Robot Framework project from your local machine or a Git repository.</CardDescription>
+                <TabsList className="grid w-full grid-cols-2 mt-4">
+                  <TabsTrigger value="local"><FolderUp className="mr-2 h-4 w-4"/>Local Folder</TabsTrigger>
+                  <TabsTrigger value="git"><GitBranch className="mr-2 h-4 w-4"/>Git Repository</TabsTrigger>
+                </TabsList>
             </CardHeader>
             <CardContent>
+              <TabsContent value="local">
+                <ProjectUploadForm />
+              </TabsContent>
+              <TabsContent value="git">
                 <GitCloneForm />
+              </TabsContent>
             </CardContent>
+          </Tabs>
         </Card>
 
         <Card className="lg:col-span-2">
@@ -49,3 +63,5 @@ export default function ProjectManagementPage() {
     </div>
   );
 }
+
+    

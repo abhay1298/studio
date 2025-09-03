@@ -114,7 +114,7 @@ export function ProjectUploadForm() {
         {selectedFolder ? (
             <p className="text-sm font-medium">Selected: <span className="font-bold">{folderName}</span> ({selectedFolder.length} files)</p>
         ) : (
-            <p className="text-sm text-muted-foreground">Click here or drag a folder to upload</p>
+            <p className="text-sm text-muted-foreground">Click here to select a folder</p>
         )}
          <input
             type="file"
@@ -152,4 +152,5 @@ export function ProjectUploadForm() {
   );
 }
 
+    
     
