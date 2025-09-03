@@ -19,13 +19,15 @@ import {
 } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { ArrowUpRight, Ban } from 'lucide-react';
+import { ArrowUpRight, Ban, FolderCog } from 'lucide-react';
 import Link from 'next/link';
 import { Skeleton } from '@/components/ui/skeleton';
+import { useExecutionContext } from '@/contexts/execution-context';
 
 type RecentRun = {
+  id: string;
   suite: string;
-  status: 'Success' | 'Failed';
+  status: 'Success' | 'Failed' | 'Stopped';
   duration: string;
   date: string;
 };
@@ -38,49 +40,53 @@ export default function DashboardPage() {
     totalRuns: 0,
     passRate: 'N/A',
     avgDuration: '--',
-    activeProject: 'Not Configured'
   });
+
+  const { activeTestDirectory, isTestDirectoryConfigured } = useExecutionContext();
   
   const loadRunHistory = () => {
-    const loadData = async () => {
-        setIsLoading(true);
-        if (typeof window !== 'undefined') {
-          try {
-            const history = await localStorage.getItem('robotMaestroRuns');
-            if (history) {
-              const runs = JSON.parse(history);
-              if (runs.length > 0) {
-                const latestRuns = runs.slice(-5).reverse();
-                setRecentRuns(latestRuns);
-                
-                const totalRuns = runs.length;
-                const passedRuns = runs.filter((r: any) => r.status === 'Success').length;
-                const passRate = totalRuns > 0 ? ((passedRuns / totalRuns) * 100).toFixed(1) + '%' : 'N/A';
-      
-                const totalDuration = runs.reduce((acc: number, r: any) => {
-                    const durationValue = r.duration ? parseFloat(r.duration) : 0;
-                    return acc + (isNaN(durationValue) ? 0 : durationValue);
-                }, 0);
-                const avgDuration = totalRuns > 0 ? (totalDuration / totalRuns).toFixed(2) + 's' : '--';
-      
-                setStats(prev => ({ ...prev, totalRuns, passRate, avgDuration }));
-              } else {
-                 setStats(prev => ({ ...prev, totalRuns: 0, passRate: 'N/A', avgDuration: '--' }));
-                 setRecentRuns([]);
-              }
-            } else {
-              setStats(prev => ({ ...prev, totalRuns: 0, passRate: 'N/A', avgDuration: '--' }));
-              setRecentRuns([]);
-            }
-          } catch (e) {
-            console.error("Failed to parse run history from localStorage", e);
-            setStats(prev => ({ ...prev, totalRuns: 0, passRate: 'N-A', avgDuration: '--' }));
-            setRecentRuns([]);
+    setIsLoading(true);
+    if (typeof window !== 'undefined') {
+      try {
+        const history = localStorage.getItem('robotMaestroRuns');
+        if (history) {
+          const runs = JSON.parse(history);
+          if (runs.length > 0) {
+            const latestRuns: RecentRun[] = runs.map((r: any) => ({
+                id: r.id || `run-${new Date(r.date).getTime()}`,
+                suite: r.suite,
+                status: r.status,
+                duration: r.duration,
+                date: r.date,
+            })).slice(-5).reverse();
+            setRecentRuns(latestRuns);
+            
+            const totalRuns = runs.length;
+            const passedRuns = runs.filter((r: any) => r.status === 'Success').length;
+            const passRate = totalRuns > 0 ? ((passedRuns / totalRuns) * 100).toFixed(1) + '%' : 'N/A';
+  
+            const totalDuration = runs.reduce((acc: number, r: any) => {
+                const durationValue = r.duration ? parseFloat(r.duration) : 0;
+                return acc + (isNaN(durationValue) ? 0 : durationValue);
+            }, 0);
+            const avgDuration = totalRuns > 0 ? (totalDuration / totalRuns).toFixed(2) + 's' : '--';
+  
+            setStats({ totalRuns, passRate, avgDuration });
+          } else {
+             setStats({ totalRuns: 0, passRate: 'N/A', avgDuration: '--' });
+             setRecentRuns([]);
           }
+        } else {
+          setStats({ totalRuns: 0, passRate: 'N/A', avgDuration: '--' });
+          setRecentRuns([]);
         }
-        setIsLoading(false);
+      } catch (e) {
+        console.error("Failed to parse run history from localStorage", e);
+        setStats({ totalRuns: 0, passRate: 'N-A', avgDuration: '--' });
+        setRecentRuns([]);
+      }
     }
-    loadData();
+    setIsLoading(false);
   };
 
   useEffect(() => {
@@ -92,6 +98,10 @@ export default function DashboardPage() {
       window.removeEventListener('runsUpdated', handleRunsUpdated);
     };
   }, []);
+  
+  const projectName = activeTestDirectory 
+    ? activeTestDirectory.split(/\/|\\/).pop()
+    : 'Not Configured';
 
   return (
     <div className="grid gap-4 md:gap-8">
@@ -132,13 +142,24 @@ export default function DashboardPage() {
           <Card>
             <CardHeader className="pb-2">
               <CardDescription>Active Project</CardDescription>
-              <CardTitle className="font-headline text-3xl">My Project</CardTitle>
+              <CardTitle className="font-headline text-2xl truncate" title={projectName}>
+                <div className="flex items-center gap-2">
+                  <FolderCog className="h-6 w-6 text-primary flex-shrink-0"/> 
+                  <span className="truncate">{projectName}</span>
+                </div>
+              </CardTitle>
             </CardHeader>
             <CardContent>
               <div className="text-xs text-muted-foreground">
-                 <Link href="/dashboard/project-explorer" className="hover:underline">
-                    View project files &rarr;
-                 </Link>
+                 {isTestDirectoryConfigured ? (
+                    <Link href="/dashboard/project-explorer" className="hover:underline">
+                      View project files &rarr;
+                    </Link>
+                 ) : (
+                    <Link href="/dashboard/project-management" className="hover:underline text-destructive">
+                      Configure a project &rarr;
+                    </Link>
+                 )}
               </div>
             </CardContent>
           </Card>
@@ -164,7 +185,7 @@ export default function DashboardPage() {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Test Suite</TableHead>
+                  <TableHead>Test Suite / Run</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead>Duration</TableHead>
                   <TableHead>Date</TableHead>
@@ -181,18 +202,18 @@ export default function DashboardPage() {
                     </TableRow>
                   ))
                 ) : recentRuns.length > 0 ? (
-                    recentRuns.map((run, index) => (
-                    <TableRow key={index}>
+                    recentRuns.map((run) => (
+                    <TableRow key={run.id}>
                         <TableCell>
-                        <div className="font-medium">{run.suite}</div>
+                        <div className="font-medium max-w-xs truncate" title={run.suite}>{run.suite}</div>
                         </TableCell>
                         <TableCell>
                         <Badge
-                             variant={run.status === 'Success' ? 'default' : 'destructive'}
+                             variant={run.status === 'Success' ? 'default' : run.status === 'Failed' ? 'destructive' : 'secondary'}
                              className={
                                 run.status === 'Success'
                                  ? 'border-transparent bg-green-500/20 text-green-700 dark:bg-green-500/10 dark:text-green-400'
-                                 : ''
+                                 : run.status === 'Stopped' ? 'bg-yellow-500/20 text-yellow-700 dark:bg-yellow-500/10 dark:text-yellow-400' : ''
                              }
                         >
                             {run.status}

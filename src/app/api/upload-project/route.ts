@@ -18,12 +18,11 @@ export async function POST(req: NextRequest) {
       // with the correct boundary when given a FormData object.
     });
 
+    const data = await response.json();
     if (!response.ok) {
-      const errorData = await response.json();
-      return NextResponse.json({ error: errorData.error || 'Backend failed to process file' }, { status: response.status });
+      return NextResponse.json({ error: data.error || 'Backend failed to process file' }, { status: response.status });
     }
 
-    const data = await response.json();
     return NextResponse.json(data);
 
   } catch (error) {
@@ -38,5 +37,3 @@ export async function POST(req: NextRequest) {
     );
   }
 }
-
-    

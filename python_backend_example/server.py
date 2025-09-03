@@ -22,11 +22,15 @@ app = Flask(__name__)
 CORS(app)
 
 # --- Configuration ---
-# IMPORTANT: This is the path to your Robot Framework project folder.
-# You MUST change this to the absolute path of your test directory.
-# Example for Windows: TESTS_DIRECTORY = 'C:\\Users\\YourUser\\Documents\\robot-projects\\my-project'
-# Example for macOS/Linux: TESTS_DIRECTORY = '/home/user/robot-projects/my-project'
-TESTS_DIRECTORY = None  # <-- CHANGE THIS
+# This can now be changed dynamically via the API.
+# It points to the directory containing the currently active Robot Framework project.
+# We'll use a temporary directory as the default base.
+PROJECTS_BASE_DIR = os.path.join(tempfile.gettempdir(), 'robot_maestro_projects')
+if not os.path.exists(PROJECTS_BASE_DIR):
+    os.makedirs(PROJECTS_BASE_DIR)
+
+# This global variable will hold the path to the currently active test directory.
+TESTS_DIRECTORY = None
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 REPORTS_DIR = os.path.join(SCRIPT_DIR, 'reports_archive')
@@ -54,6 +58,21 @@ class ExecutionState:
 state = ExecutionState()
 
 # --- Utility Functions ---
+def set_active_directory(path):
+    """Sets the global test directory and logs it."""
+    global TESTS_DIRECTORY
+    # Normalize path for consistent representation
+    normalized_path = os.path.abspath(path)
+    TESTS_DIRECTORY = normalized_path
+    print(f"INFO: Active test directory set to: {TESTS_DIRECTORY}")
+
+def find_robot_files_and_get_root(directory):
+    """Finds the directory containing .robot files, even if nested."""
+    for root, dirs, files in os.walk(directory):
+        if any(file.endswith('.robot') for file in files):
+            return root  # Return the directory where .robot files were first found
+    return directory # Fallback to the original directory if no .robot files are found
+
 def parse_robot_file(file_path):
     test_cases = []
     in_test_cases_section = False
@@ -129,7 +148,7 @@ def scan_dependencies():
         result['requirements_files'] = requirements_files
         
         if not requirements_files:
-            result['suggestions'].append("No requirements.txt files found")
+            result['suggestions'].append("No requirements.txt files found in the active project.")
             return result
         
         all_required_packages = {}
@@ -146,11 +165,11 @@ def scan_dependencies():
         
         result['missing_packages'] = missing_packages_list
         if not missing_packages_list:
-            result['suggestions'].append("All dependencies satisfied")
+            result['suggestions'].append("All dependencies from requirements files are satisfied.")
     
     except Exception as e:
         result['status'] = 'error'
-        result['errors'].append(f"Error during scan: {str(e)}")
+        result['errors'].append(f"Error during dependency scan: {str(e)}")
     
     return result
 
@@ -226,25 +245,29 @@ def parse_test_statistics_from_xml(output_dir):
         tree = ET.parse(output_xml_path)
         root = tree.getroot()
         
-        # Method 1: Look for the <statistics> tag (more reliable)
-        for statistics in root.findall('.//statistics'):
-            for total in statistics.findall('.//total'):
-                for stat in total.findall('stat'):
-                    if stat.get('id') == 'All Tests':
-                        pass_count = int(stat.get('pass', 0))
-                        fail_count = int(stat.get('fail', 0))
-                        return pass_count, fail_count
-        
-        # Method 2: Fallback by counting test statuses (less reliable)
         pass_count = fail_count = 0
+        # Find the top-level statistics element
+        total_stats = root.find("./statistics/total/stat")
+        if total_stats is not None and total_stats.get('id') == 'All Tests':
+             pass_count = int(total_stats.get('pass', 0))
+             fail_count = int(total_stats.get('fail', 0))
+             return pass_count, fail_count
+
+        # Fallback for older Robot versions or different structures
+        for stat in root.findall(".//stat"):
+            if stat.get('id') == 'All Tests' or stat.text.strip() == 'All Tests':
+                pass_count = int(stat.get('pass', 0))
+                fail_count = int(stat.get('fail', 0))
+                return pass_count, fail_count
+
+        # Final fallback: count test statuses directly
         for test in root.findall('.//test'):
             status = test.find('status')
-            if status is not None:
-                if status.get('status') == 'PASS':
-                    pass_count += 1
-                elif status.get('status') == 'FAIL':
-                    fail_count += 1
-        
+            if status is not None and status.get('status') == 'PASS':
+                pass_count += 1
+            elif status is not None and status.get('status') == 'FAIL':
+                fail_count += 1
+
         return pass_count, fail_count
         
     except Exception as e:
@@ -264,20 +287,25 @@ def create_variable_file_from_data(timestamp):
     var_file_path = os.path.join(tempfile.gettempdir(), f'orchestrator_vars_{timestamp}.py')
 
     with open(var_file_path, 'w', encoding='utf-8') as f:
-        f.write("# Auto-generated variable file\n\n")
+        f.write("# Auto-generated variable file from Robot Maestro\n\n")
         
         # Create simple variables from the first row of data
         first_row = data_rows[0]
         for i, header in enumerate(headers):
             # Sanitize header to create a valid variable name
-            var_name = re.sub(r'\W|^(?=\d)', '_', header)
+            var_name = re.sub(r'[^a-zA-Z0-9_]', '_', str(header))
+            if not var_name or var_name[0].isdigit():
+                var_name = 'var_' + var_name
             value = first_row[i] if i < len(first_row) else ""
             f.write(f"{var_name} = {json.dumps(value)}\n")
             
         # Create a list of dictionaries for all data rows
         f.write("\nORCHESTRATOR_DATA = [\n")
         for row in data_rows:
-            row_dict = {re.sub(r'\W|^(?=\d)', '_', headers[i]): (row[i] if i < len(row) else "") for i in range(len(headers))}
+            row_dict = {
+                (re.sub(r'[^a-zA-Z0-9_]', '_', str(headers[i])) if not re.sub(r'[^a-zA-Z0-9_]', '_', str(headers[i]))[0].isdigit() else 'var_' + re.sub(r'[^a-zA-Z0-9_]', '_', str(headers[i]))): (row[i] if i < len(row) else "") 
+                for i in range(len(headers))
+            }
             f.write(f"    {json.dumps(row_dict)},\n")
         f.write("]\n")
     
@@ -289,8 +317,6 @@ def run_robot_in_thread(command, output_dir, timestamp):
     output_dir = os.path.abspath(output_dir)
 
     try:
-        # Use CREATE_NEW_PROCESS_GROUP on Windows and os.setsid on Unix-like
-        # systems to allow for proper termination of the process tree.
         creation_flags = subprocess.CREATE_NEW_PROCESS_GROUP if os.name == 'nt' else 0
         preexec_fn = os.setsid if os.name != 'nt' else None
 
@@ -302,7 +328,8 @@ def run_robot_in_thread(command, output_dir, timestamp):
             encoding='utf-8',
             errors='replace',
             creationflags=creation_flags,
-            preexec_fn=preexec_fn
+            preexec_fn=preexec_fn,
+            cwd=TESTS_DIRECTORY # Execute from the test directory context
         )
 
         for line in iter(state.process.stdout.readline, ''):
@@ -337,20 +364,20 @@ def run_robot_in_thread(command, output_dir, timestamp):
                         state.log_file = archived_name
 
             # Archive video if one was created
-            project_root = os.path.dirname(os.path.abspath(TESTS_DIRECTORY))
-            video_search_dir = os.path.join(project_root, 'Execution_Videos')
-            
-            new_video_path = find_video_in_dir(video_search_dir)
-            if new_video_path:
-                video_ext = os.path.splitext(new_video_path)[1]
-                archived_video_name = f"video-{timestamp}{video_ext}"
-                shutil.move(new_video_path, os.path.join(REPORTS_DIR, archived_video_name))
-                state.video_file = archived_video_name
+            if TESTS_DIRECTORY:
+                video_search_dir = os.path.join(TESTS_DIRECTORY, 'Execution_Videos')
+                if os.path.isdir(video_search_dir):
+                    new_video_path = find_video_in_dir(video_search_dir)
+                    if new_video_path:
+                        video_ext = os.path.splitext(new_video_path)[1]
+                        archived_video_name = f"video-{timestamp}{video_ext}"
+                        shutil.move(new_video_path, os.path.join(REPORTS_DIR, archived_video_name))
+                        state.video_file = archived_video_name
 
         except Exception as e:
             state.logs.append(f"Error archiving reports/video: {e}")
 
-        state.status = 'success' if state.return_code == 0 else 'failed'
+        state.status = 'success' if state.return_code == 0 and state.fail_count == 0 else 'failed'
 
     except FileNotFoundError:
         state.logs.append("ERROR: 'robot' command not found. Is Robot Framework installed and in your system's PATH?")
@@ -399,10 +426,118 @@ def find_matching_report_file(requested_filename, reports_dir):
     return None
 
 # --- API Endpoints ---
+@app.route('/test-directory-status', methods=['GET'])
+def get_test_directory_status():
+    if TESTS_DIRECTORY and os.path.isdir(TESTS_DIRECTORY):
+        return jsonify({
+            "is_configured": True,
+            "path": TESTS_DIRECTORY
+        })
+    else:
+        return jsonify({
+            "is_configured": False,
+            "path": None,
+            "message": "Test directory not set or is invalid."
+        })
+
+@app.route('/upload-project', methods=['POST'])
+def upload_project():
+    if 'file' not in request.files:
+        return jsonify({"error": "No file part in the request"}), 400
+    
+    file = request.files['file']
+    if file.filename == '':
+        return jsonify({"error": "No file selected"}), 400
+
+    if file and file.filename.endswith('.zip'):
+        try:
+            # Create a unique directory for the new project
+            project_name = os.path.splitext(file.filename)[0]
+            project_dir = os.path.join(PROJECTS_BASE_DIR, f"{project_name}-{datetime.datetime.now().strftime('%Y%m%d%H%M%S')}")
+            os.makedirs(project_dir, exist_ok=True)
+
+            # Save and extract the zip file
+            zip_path = os.path.join(project_dir, file.filename)
+            file.save(zip_path)
+            
+            with zipfile.ZipFile(zip_path, 'r') as zip_ref:
+                zip_ref.extractall(project_dir)
+            
+            os.remove(zip_path) # Clean up the zip file
+
+            # Check if the zip contained a single root folder
+            extracted_items = os.listdir(project_dir)
+            if len(extracted_items) == 1 and os.path.isdir(os.path.join(project_dir, extracted_items[0])):
+                # If so, the actual project is one level deeper
+                actual_project_path = os.path.join(project_dir, extracted_items[0])
+                final_path = find_robot_files_and_get_root(actual_project_path)
+            else:
+                final_path = find_robot_files_and_get_root(project_dir)
+
+            set_active_directory(final_path)
+            
+            return jsonify({
+                "message": f"Project '{project_name}' uploaded and set as active.",
+                "path": TESTS_DIRECTORY,
+                "project_name": project_name
+            }), 200
+
+        except Exception as e:
+            return jsonify({"error": f"Failed to process zip file: {str(e)}"}), 500
+    
+    return jsonify({"error": "Invalid file type. Please upload a .zip file."}), 400
+
+
+@app.route('/clone-repo', methods=['POST'])
+def clone_repo():
+    data = request.get_json()
+    repo_url = data.get('repo_url')
+
+    if not repo_url:
+        return jsonify({"error": "repo_url is required"}), 400
+
+    try:
+        # Check if git is installed
+        subprocess.run(['git', '--version'], check=True, capture_output=True)
+    except (subprocess.CalledProcessError, FileNotFoundError):
+        return jsonify({"error": "'git' command not found. Please ensure Git is installed and in your system's PATH."}), 500
+
+    try:
+        repo_name = repo_url.split('/')[-1].replace('.git', '')
+        clone_dir = os.path.join(PROJECTS_BASE_DIR, f"{repo_name}-{datetime.datetime.now().strftime('%Y%m%d%H%M%S')}")
+        
+        # Perform the git clone
+        process = subprocess.Popen(
+            ['git', 'clone', repo_url, clone_dir],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            encoding='utf-8',
+            errors='replace'
+        )
+        
+        # Log cloning progress
+        for line in iter(process.stdout.readline, ''):
+            if line.strip():
+                print(f"GIT: {line.strip()}")
+        
+        return_code = process.wait()
+
+        if return_code != 0:
+            return jsonify({"error": "Failed to clone repository. Check the URL and ensure the repository is public."}), 500
+        
+        final_path = find_robot_files_and_get_root(clone_dir)
+        set_active_directory(final_path)
+
+        return jsonify({"message": f"Successfully cloned repository.", "path": TESTS_DIRECTORY}), 200
+
+    except Exception as e:
+        return jsonify({"error": f"An error occurred during cloning: {str(e)}"}), 500
+
 @app.route('/list-suites', methods=['GET'])
 def list_suites():
     if not TESTS_DIRECTORY or not os.path.isdir(TESTS_DIRECTORY):
-        return jsonify({"error": "Test directory is not configured in server.py"}), 500
+        return jsonify({"error": "Test directory is not configured or is invalid. Please upload or clone a project first."}), 404
 
     suites = []
     try:
@@ -424,6 +559,11 @@ def list_suites():
 
 @app.route('/scan-dependencies', methods=['GET'])
 def scan_dependencies_endpoint():
+    if not TESTS_DIRECTORY:
+        return jsonify({
+            "status": "error",
+            "errors": ["No active project directory set. Please upload or clone a project first."]
+        }), 404
     result = scan_dependencies()
     return jsonify(result)
 
@@ -454,7 +594,7 @@ def install_dependencies():
 def run_robot_tests():
     global state
     if not TESTS_DIRECTORY or not os.path.isdir(TESTS_DIRECTORY):
-        return jsonify({"status": "error", "message": "Test directory is not configured in server.py"}), 400
+        return jsonify({"status": "error", "message": "Test directory is not configured. Please upload or clone a project first."}), 400
 
     if state.status == "running":
         return jsonify({"status": "error", "message": "Execution already running"}), 409
@@ -468,14 +608,12 @@ def run_robot_tests():
         
         if runType == 'Orchestrator' and 'orchestratorData' in config:
             state.orchestrator_data = config['orchestratorData']
-            # Sort by priority if available
             headers = state.orchestrator_data.get('headers', [])
             data_rows = state.orchestrator_data.get('data', [])
             try:
                 priority_index = next((i for i, h in enumerate(headers) if str(h).lower() == 'priority'), -1)
                 if priority_index != -1:
                     priority_order = {'P0': 0, 'P1': 1, 'P2': 2, 'P3': 3}
-                    # Keep original index to maintain stability for same-priority items
                     indexed_rows = list(enumerate(data_rows))
                     indexed_rows.sort(key=lambda x: (priority_order.get(str(x[1][priority_index]).upper(), 99), x[0]))
                     state.orchestrator_data['data'] = [row for _, row in indexed_rows]
@@ -512,13 +650,12 @@ def run_robot_tests():
         thread.daemon = True
         thread.start()
         
-        # Clean up the variable file after a short delay to ensure robot has read it
         if variable_file_to_cleanup:
+            time.sleep(1)
             try:
-                time.sleep(2) # Give robot time to read the file
                 os.remove(variable_file_to_cleanup)
             except Exception as e:
-                print(f"Error cleaning up var file: {e}")
+                print(f"Could not clean up variable file: {e}")
 
         return jsonify({"status": "running", "message": "Execution started"})
     except Exception as e:
@@ -544,10 +681,8 @@ def stop_robot_tests():
             state.status = "stopped"
             # Terminate the entire process group
             if os.name == 'nt':
-                # On Windows, sending CTRL_BREAK_EVENT is more effective for console apps
                 state.process.send_signal(signal.CTRL_BREAK_EVENT)
             else:
-                # On Unix-like systems, kill the process group
                 os.killpg(os.getpgid(state.process.pid), signal.SIGTERM)
             return jsonify({"status": "success", "message": "Stop signal sent"})
         except Exception as e:
@@ -580,11 +715,9 @@ def get_report(filename):
         if not actual_filename:
             return jsonify({"error": "File not found"}), 404
         
-        # For HTML files, inject JS to fix relative links if needed
         if actual_filename.endswith('.html'):
             with open(os.path.join(REPORTS_DIR, actual_filename), 'r', encoding='utf-8') as f:
                 html_content = f.read()
-            # Simple link fixing for demo purposes
             if 'report-' in actual_filename:
                 timestamp = actual_filename.split('-')[1].split('.')[0]
                 html_content = html_content.replace('log.html', f'log-{timestamp}.html')
@@ -592,10 +725,8 @@ def get_report(filename):
             response.headers['Content-Type'] = 'text/html'
             return response
         elif actual_filename.lower().endswith(('.mp4', '.webm')):
-            # Redirect to a streaming endpoint for videos
             return redirect(f'/stream-video/{actual_filename}')
         else:
-            # For other files, serve them directly
             return send_from_directory(REPORTS_DIR, actual_filename)
     except Exception as e:
         return jsonify({"error": str(e)}), 500
@@ -654,14 +785,9 @@ if __name__ == '__main__':
     if TESTS_DIRECTORY:
         print(f"✓ Active Test Directory: {TESTS_DIRECTORY}")
     else:
-        print("✗ WARNING: No active test directory.")
-        print("  Please edit server.py and set the TESTS_DIRECTORY variable.")
+        print("✓ No active test directory set. Waiting for project upload...")
+    print(f"✓ Projects Base Directory: {PROJECTS_BASE_DIR}")
     print(f"✓ Reports will be archived in: {REPORTS_DIR}")
     print("=" * 60)
     print("Starting server on http://127.0.0.1:5001")
     app.run(host='127.0.0.1', port=5001, debug=True)
-
-    
-    
-
-    

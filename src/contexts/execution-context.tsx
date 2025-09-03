@@ -29,6 +29,9 @@ interface ExecutionContextType {
   isLoadingSuites: boolean;
   suiteLoadError: string | null;
 
+  activeTestDirectory: string | null;
+  isTestDirectoryConfigured: boolean;
+
   editedData: TableData;
   setEditedData: Dispatch<SetStateAction<TableData>>;
   editedHeaders: string[];
@@ -36,6 +39,7 @@ interface ExecutionContextType {
   hasHydrated: boolean;
 
   fetchSuites: () => Promise<void>;
+  fetchTestDirectoryStatus: () => Promise<void>;
   
   handleInputChange: (field: keyof RunConfig, value: string) => void;
   handleRun: (runType: string) => Promise<void>;
@@ -77,11 +81,29 @@ export function ExecutionProvider({ children }: { children: ReactNode }) {
   const [isLoadingSuites, setIsLoadingSuites] = useState(true);
   const [suiteLoadError, setSuiteLoadError] = useState<string | null>(null);
 
+  const [activeTestDirectory, setActiveTestDirectory] = useState<string | null>(null);
+  const [isTestDirectoryConfigured, setIsTestDirectoryConfigured] = useState(false);
+
   const [editedData, setEditedData] = useState<TableData>([]);
   const [editedHeaders, setEditedHeaders] = useState<string[]>([]);
   const [hasHydrated, setHasHydrated] = useState(false);
 
   const { toast } = useToast();
+
+  const fetchTestDirectoryStatus = useCallback(async () => {
+    try {
+      const response = await fetch('/api/test-directory-status');
+      const data = await response.json();
+      if (response.ok) {
+        setIsTestDirectoryConfigured(data.is_configured);
+        setActiveTestDirectory(data.path);
+      }
+    } catch (e) {
+      setIsTestDirectoryConfigured(false);
+      setActiveTestDirectory(null);
+      console.error("Failed to fetch test directory status", e);
+    }
+  }, []);
   
   const fetchSuites = useCallback(async () => {
     setIsLoadingSuites(true);
@@ -93,6 +115,7 @@ export function ExecutionProvider({ children }: { children: ReactNode }) {
       if (!response.ok) {
         // This will be triggered by non-2xx responses, where the body is JSON
         setSuiteLoadError(data.error || `Failed to fetch suites. Status: ${response.status}`);
+        setTestSuites([]);
       } else {
         setTestSuites(data);
       }
@@ -100,6 +123,7 @@ export function ExecutionProvider({ children }: { children: ReactNode }) {
       console.error("Failed to fetch test suites:", e);
       // This will catch network errors or cases where response is not valid JSON
       setSuiteLoadError(e.message || 'An unknown error occurred while fetching suites.');
+       setTestSuites([]);
     } finally {
       setIsLoadingSuites(false);
     }
@@ -112,7 +136,8 @@ export function ExecutionProvider({ children }: { children: ReactNode }) {
     setHasHydrated(true);
 
     fetchSuites();
-  }, [fetchSuites]);
+    fetchTestDirectoryStatus();
+  }, [fetchSuites, fetchTestDirectoryStatus]);
 
   useEffect(() => {
     if (hasHydrated) {
@@ -221,8 +246,8 @@ export function ExecutionProvider({ children }: { children: ReactNode }) {
         body: JSON.stringify({ runType, config: configForRun }),
       });
   
+      const result = await runResponse.json();
       if (!runResponse.ok) {
-        const result = await runResponse.json();
         throw new Error(result.message || 'The execution server failed to start the run.');
       }
   
@@ -347,12 +372,15 @@ export function ExecutionProvider({ children }: { children: ReactNode }) {
     testSuites,
     isLoadingSuites,
     suiteLoadError,
+    activeTestDirectory,
+    isTestDirectoryConfigured,
     editedData,
     setEditedData,
     editedHeaders,
     setEditedHeaders,
     hasHydrated,
     fetchSuites,
+    fetchTestDirectoryStatus,
     handleInputChange,
     handleRun,
     handleStop,
@@ -373,5 +401,3 @@ export function useExecutionContext() {
   }
   return context;
 }
-
-    
