@@ -1,184 +1,143 @@
-
 "use client";
 
-import { useState } from 'react';
-import { Button } from '@/components/ui/button';
+import React, { useCallback, useRef } from 'react';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
-import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
-import { UploadCloud, FileCheck2, Loader2, XCircle } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { UploadCloud, Folder, File, X, FileCheck2, GitBranch } from 'lucide-react';
+import { cn } from '@/lib/utils';
 import { useToast } from '@/hooks/use-toast';
-import { useExecutionContext } from '@/contexts/execution-context';
-import * as XLSX from 'xlsx';
-import Papa from 'papaparse';
+import { Separator } from '../ui/separator';
 
+type ProjectFileSource = 'local' | 'git';
 
-export function ProjectUpload() {
-  const [isUploading, setIsUploading] = useState(false);
-  const [uploadError, setUploadError] = useState<string | null>(null);
-  const [selectedFileName, setSelectedFileName] = useState<string | null>(null);
-  const { toast } = useToast();
-  const { setDataFileName, setEditedData, setEditedHeaders, fetchSuites, fetchTestDirectoryStatus } = useExecutionContext();
+type ProjectUploadProps = {
+    projectFileName: string | null;
+    projectFileSource: ProjectFileSource | null;
+    dataFileName: string | null;
+    onProjectFileChange: (file: File) => void;
+    onDataFileChange: (file: File) => void;
+    onClearProjectFile: () => void;
+    onClearDataFile: () => void;
+}
 
-  const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
-    setIsUploading(true);
-    setUploadError(null);
-    setSelectedFileName(null);
-    setDataFileName(null);
+export function ProjectUpload({
+    projectFileName,
+    projectFileSource,
+    dataFileName,
+    onProjectFileChange,
+    onDataFileChange,
+    onClearProjectFile,
+    onClearDataFile
+}: ProjectUploadProps) {
+    const { toast } = useToast();
+    const projectInputRef = useRef<HTMLInputElement>(null);
+    const dataInputRef = useRef<HTMLInputElement>(null);
 
-    const file = event.target.files?.[0];
-    if (file) {
-        setSelectedFileName(file.name);
-
-        if (file.name.endsWith('.zip')) {
-            handleProjectUpload(file);
-        } else if (file.name.endsWith('.csv') || file.name.endsWith('.xlsx')) {
-            handleDataFileUpload(file);
-        } else {
-            handleError('Unsupported file type. Please upload a .zip for projects, or .csv/.xlsx for data.');
-        }
-    } else {
-        setIsUploading(false);
-    }
-  };
-
-  const handleProjectUpload = async (file: File) => {
-    const formData = new FormData();
-    formData.append('file', file);
-
-    try {
-        const response = await fetch('/api/upload-project', {
-            method: 'POST',
-            body: formData,
-        });
-
-        const result = await response.json();
-
-        if (!response.ok) {
-            throw new Error(result.error || 'Failed to upload project.');
-        }
-
-        handleSuccess(file.name, `Project "${result.project_name}" uploaded and set as active directory.`);
-        fetchSuites(); // Refresh the project explorer
-        fetchTestDirectoryStatus(); // Refresh the active directory display
-    } catch (e: any) {
-        handleError(e.message || 'An unknown error occurred during project upload.');
-    }
-  };
-
-  const handleDataFileUpload = (file: File) => {
-    setDataFileName(file.name); // Set in context
-    const reader = new FileReader();
-    if (file.name.endsWith('.csv')) {
-        reader.onload = (e) => {
-            const text = e.target?.result as string;
-            Papa.parse(text, {
-                header: true,
-                skipEmptyLines: true,
-                complete: (results) => {
-                    const headers = results.meta.fields || [];
-                    const data = results.data.map((row: any) => headers.map(header => row[header] ?? ''));
-                    setEditedHeaders(headers);
-                    setEditedData(data as (string | number)[][]);
-                    handleSuccess(file.name, `Data file loaded. You can now edit it in the Data Editor page.`);
-                },
-                error: (error) => {
-                    handleError(error.message);
-                }
+    const createUploadHandler = (handler: (file: File) => void, fileType: 'project' | 'data') => 
+        (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (file) {
+            handler(file);
+             toast({
+                title: `${fileType === 'project' ? 'Project' : 'Data'} file loaded`,
+                description: `${file.name} is ready for processing.`,
+                action: <FileCheck2 className="text-green-500" />
             });
-        };
-        reader.readAsText(file);
-    } else if (file.name.endsWith('.xlsx')) {
-        reader.onload = (e) => {
-            try {
-                const data = new Uint8Array(e.target?.result as ArrayBuffer);
-                const workbook = XLSX.read(data, { type: 'array' });
-                const sheetName = workbook.SheetNames[0];
-                const worksheet = workbook.Sheets[sheetName];
-                const json = XLSX.utils.sheet_to_json(worksheet, { header: 1, defval: "" });
-                const headers = (json[0] as string[]) || [];
-                const tableData = (json.slice(1) as (string | number)[][]);
-                setEditedHeaders(headers);
-                setEditedData(tableData);
-                handleSuccess(file.name, `Data file loaded. You can now edit it in the Data Editor page.`);
-            } catch (xlsxError: any) {
-                handleError(xlsxError.message || "Failed to parse the XLSX file.");
-            }
-        };
-         reader.onerror = () => {
-            handleError(reader.error?.message || 'Failed to read the file.');
-        };
-        reader.readAsArrayBuffer(file);
-    }
-  }
+        }
+    };
+    
+    return (
+        <div className="grid gap-6 md:grid-cols-2">
+            <Card>
+                <CardHeader>
+                    <CardTitle>1. Load Robot Framework Project</CardTitle>
+                    <CardDescription>Upload a .zip file of your project or connect to a Git repository.</CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                     {projectFileName ? (
+                        <div className="flex items-center justify-between rounded-lg border p-3">
+                           <div className="flex items-center gap-3">
+                                {projectFileSource === 'git' ? (
+                                    <GitBranch className="h-5 w-5 text-primary" />
+                                ) : (
+                                    <Folder className="h-5 w-5 text-primary" />
+                                )}
+                                <span className="font-medium">{projectFileName}</span>
+                           </div>
+                            <Button variant="ghost" size="icon" onClick={onClearProjectFile}>
+                                <X className="h-4 w-4" />
+                            </Button>
+                        </div>
+                    ) : (
+                        <div className="space-y-4">
+                            <div 
+                                onClick={() => projectInputRef.current?.click()}
+                                className="flex flex-col items-center justify-center p-6 border-2 border-dashed rounded-lg cursor-pointer hover:border-primary transition-colors"
+                            >
+                                <UploadCloud className="h-8 w-8 text-muted-foreground" />
+                                <p className="mt-2 text-sm font-semibold">Upload a .zip file</p>
+                                <p className="text-xs text-muted-foreground">Drag & drop or click to browse</p>
+                            </div>
+                            <Input 
+                                ref={projectInputRef}
+                                type="file" 
+                                className="hidden" 
+                                accept=".zip"
+                                onChange={createUploadHandler(onProjectFileChange, 'project')}
+                            />
+                             <div className="flex items-center gap-2">
+                                <Separator className="flex-1" />
+                                <span className="text-xs text-muted-foreground">OR</span>
+                                <Separator className="flex-1" />
+                            </div>
+                            <div className="space-y-2">
+                                <Input placeholder="https://github.com/user/robot-repo.git" />
+                                <Button className="w-full" variant="secondary" onClick={() => toast({ title: "Coming soon!", description: "Cloning from Git is not yet implemented."})}>
+                                    <GitBranch className="mr-2 h-4 w-4"/>
+                                    Connect to Git Repository
+                                </Button>
+                            </div>
+                        </div>
+                    )}
 
+                </CardContent>
+            </Card>
 
-  const handleSuccess = (fileName: string, description: string) => {
-    setIsUploading(false);
-    setUploadError(null);
-    toast({
-        title: "File Processed",
-        description,
-        action: <FileCheck2 className="text-green-500" />,
-    });
-  }
-
-  const handleError = (message: string) => {
-    setUploadError(message);
-    setIsUploading(false);
-    // Do not clear data file name in case of project upload error
-    // setDataFileName(null); 
-    toast({
-        variant: "destructive",
-        title: "Upload Failed",
-        description: message,
-    });
-  }
-
-
-  return (
-    <div className="space-y-4">
-      <div className="flex flex-col items-center justify-center rounded-lg border-2 border-dashed border-muted-foreground/30 bg-muted/50 p-8 text-center">
-        <UploadCloud className="h-12 w-12 text-muted-foreground" />
-        <p className="mt-4 font-semibold text-foreground">Upload your files</p>
-        <p className="text-sm text-muted-foreground">.zip for projects, .csv/.xlsx for data.</p>
-        <Input 
-            id="file-upload" 
-            type="file" 
-            className="mt-4 max-w-sm" 
-            accept=".zip,.csv,.xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel"
-            onChange={handleFileChange}
-            disabled={isUploading}
-        />
-      </div>
-      
-      {isUploading && (
-         <Alert>
-          <Loader2 className="h-4 w-4 animate-spin" />
-          <AlertTitle>Processing File...</AlertTitle>
-          <AlertDescription>
-            Please wait while the file is being uploaded and processed.
-          </AlertDescription>
-        </Alert>
-      )}
-
-      {uploadError && (
-        <Alert variant="destructive">
-            <XCircle className="h-4 w-4" />
-            <AlertTitle>Error</AlertTitle>
-            <AlertDescription>{uploadError}</AlertDescription>
-        </Alert>
-      )}
-
-       {selectedFileName && !isUploading && !uploadError && (
-        <Alert className="border-green-500/50 text-green-700 dark:border-green-500/50 dark:text-green-400">
-          <FileCheck2 className="h-4 w-4 !text-green-500" />
-          <AlertTitle>File Ready</AlertTitle>
-          <AlertDescription>
-            Successfully processed <strong>{selectedFileName}</strong>.
-          </AlertDescription>
-        </Alert>
-      )}
-
-    </div>
-  );
+            <Card>
+                <CardHeader>
+                    <CardTitle>2. Load Test Data (Optional)</CardTitle>
+                    <CardDescription>Upload a .csv or .xlsx file for data-driven testing with the Orchestrator.</CardDescription>
+                </CardHeader>
+                <CardContent>
+                    {dataFileName ? (
+                         <div className="flex items-center justify-between rounded-lg border p-3">
+                            <div className="flex items-center gap-3">
+                                <File className="h-5 w-5 text-primary" />
+                                <span className="font-medium">{dataFileName}</span>
+                           </div>
+                            <Button variant="ghost" size="icon" onClick={onClearDataFile}>
+                                <X className="h-4 w-4" />
+                            </Button>
+                        </div>
+                    ) : (
+                         <div 
+                            onClick={() => dataInputRef.current?.click()}
+                            className="flex flex-col items-center justify-center p-12 border-2 border-dashed rounded-lg cursor-pointer hover:border-primary transition-colors h-full"
+                        >
+                            <UploadCloud className="h-8 w-8 text-muted-foreground" />
+                            <p className="mt-2 text-sm font-semibold">Upload a .csv or .xlsx file</p>
+                        </div>
+                    )}
+                     <Input 
+                        ref={dataInputRef}
+                        type="file" 
+                        className="hidden" 
+                        accept=".csv,.xlsx"
+                        onChange={createUploadHandler(onDataFileChange, 'data')}
+                    />
+                </CardContent>
+            </Card>
+        </div>
+    );
 }

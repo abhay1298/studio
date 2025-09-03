@@ -1,7 +1,6 @@
-
 "use client";
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import {
   Alert,
@@ -10,50 +9,61 @@ import {
 } from '@/components/ui/alert';
 import { CheckCircle2, AlertTriangle, XCircle, Loader2 } from 'lucide-react';
 import { DependencyStatusDialog } from './dependency-status-dialog';
+import { useToast } from '@/hooks/use-toast';
 
 export type DependencyStatus = {
   library: string;
   status: 'installed' | 'missing';
 };
 
-export function DependencyChecker() {
-  const [requirements, setRequirements] = useState<string>('');
-  const [dependencyStatus, setDependencyStatus] = useState<
-    DependencyStatus[]
-  >([]);
+type DependencyCheckerProps = {
+    requirementsContent: string;
+    projectIsLoaded: boolean;
+}
+
+export function DependencyChecker({ requirementsContent, projectIsLoaded }: DependencyCheckerProps) {
+  const [dependencyStatus, setDependencyStatus] = useState<DependencyStatus[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const { toast } = useToast();
 
-  const handleFileRead = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      const reader = new FileReader();
-      reader.onload = (ev) => {
-        const content = ev.target?.result as string;
-        setRequirements(content);
-      };
-      reader.readAsText(file);
-    }
-  };
+  useEffect(() => {
+    // Reset status when project context changes
+    setDependencyStatus([]);
+    setError(null);
+  }, [requirementsContent, projectIsLoaded]);
+
 
   const handleCheckDependencies = async () => {
     setIsLoading(true);
     setError(null);
     setDependencyStatus([]);
+
+    if (!requirementsContent) {
+        setError("No requirements.txt found in the uploaded project.");
+        setIsLoading(false);
+        return;
+    }
+
     try {
       const response = await fetch('/api/check-dependencies', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ requirements }),
+        body: JSON.stringify({ requirements: requirementsContent }),
       });
       if (!response.ok) {
         throw new Error('Failed to check dependencies on the server.');
       }
       const data: DependencyStatus[] = await response.json();
       setDependencyStatus(data);
-      if(data.some(d => d.status === 'missing')){
+      if (data.length > 0) {
         setIsDialogOpen(true);
+      } else {
+        toast({
+            title: "No dependencies found",
+            description: "Your requirements.txt seems to be empty."
+        })
       }
     } catch (err: any) {
       setError(err.message || 'An unknown error occurred.');
@@ -122,35 +132,19 @@ export function DependencyChecker() {
   return (
     <>
         <div className="grid gap-4">
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div className="space-y-2">
-                    <label
-                        htmlFor="requirements-file"
-                        className="block text-sm font-medium text-foreground"
-                    >
-                        Upload requirements.txt
-                    </label>
-                    <input
-                        id="requirements-file"
-                        type="file"
-                        accept=".txt"
-                        onChange={handleFileRead}
-                        className="block w-full text-sm text-muted-foreground file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-primary/10 file:text-primary hover:file:bg-primary/20"
-                    />
-                </div>
-                <div className="flex items-end">
-                    <Button
-                        onClick={handleCheckDependencies}
-                        disabled={!requirements || isLoading}
-                        className="w-full"
-                    >
-                        {isLoading ? (
-                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                        ) : null}
-                        Check Dependencies
-                    </Button>
-                </div>
-            </div>
+            <Alert>
+                <AlertTriangle className="h-4 w-4" />
+                <AlertTitle>How this works</AlertTitle>
+                <AlertDescription>This tool scans your project for a `requirements.txt` file and checks if the libraries are available. This is a simulation - a real implementation would check a live Python environment.</AlertDescription>
+            </Alert>
+             <Button
+                onClick={handleCheckDependencies}
+                disabled={isLoading || !projectIsLoaded}
+                className="w-full sm:w-auto"
+            >
+                {isLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                Scan and Check Dependencies
+            </Button>
             {renderSummary()}
         </div>
         <DependencyStatusDialog 
@@ -162,5 +156,3 @@ export function DependencyChecker() {
 
   );
 }
-
-    
