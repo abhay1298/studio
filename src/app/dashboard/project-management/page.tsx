@@ -1,9 +1,9 @@
 
 "use client";
 
-import { DependencyChecker } from "@/components/dashboard/dependency-checker";
-import { ProjectUpload } from "@/components/dashboard/project-upload";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { FolderGit } from "lucide-react";
 
 export default function ProjectManagementPage() {
 
@@ -13,29 +13,13 @@ export default function ProjectManagementPage() {
         Project Management
       </h1>
       
-      <Card>
-        <CardHeader>
-          <CardTitle className="font-headline">Project Upload</CardTitle>
-          <CardDescription>
-            Upload your entire Robot Framework project as a single .zip file.
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <ProjectUpload />
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-            <CardTitle className="font-headline">Dependency Management</CardTitle>
-            <CardDescription>Scan your configured project to find and install required Python packages from `requirements.txt` files.</CardDescription>
-        </CardHeader>
-        <CardContent>
-            <DependencyChecker />
-        </CardContent>
-      </Card>
+      <Alert>
+        <FolderGit className="h-4 w-4" />
+        <AlertTitle>Project Management Hub</AlertTitle>
+        <AlertDescription>
+          This area is designated for future project configuration and management tools.
+        </AlertDescription>
+      </Alert>
     </div>
   );
 }
-
-    
