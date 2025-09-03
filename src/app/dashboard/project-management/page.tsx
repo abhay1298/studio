@@ -2,8 +2,7 @@
 "use client";
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { FolderGit } from "lucide-react";
+import { ProjectUpload } from "@/components/dashboard/project-upload";
 
 export default function ProjectManagementPage() {
 
@@ -13,13 +12,20 @@ export default function ProjectManagementPage() {
         Project Management
       </h1>
       
-      <Alert>
-        <FolderGit className="h-4 w-4" />
-        <AlertTitle>Project Management Hub</AlertTitle>
-        <AlertDescription>
-          This area is designated for future project configuration and management tools.
-        </AlertDescription>
-      </Alert>
+      <div className="grid gap-6 lg:grid-cols-1">
+        <Card>
+          <CardHeader>
+            <CardTitle className="font-headline">Test Data Upload</CardTitle>
+            <CardDescription>
+              Upload your CSV or Excel file here. The data will be available
+              in the Data Editor and can be used by the Orchestrator.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <ProjectUpload />
+          </CardContent>
+        </Card>
+      </div>
     </div>
   );
 }
