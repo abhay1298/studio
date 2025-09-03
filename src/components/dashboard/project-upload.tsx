@@ -14,7 +14,7 @@ import {
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Button, buttonVariants } from '@/components/ui/button';
-import { UploadCloud, Pencil, FolderUp, FileSpreadsheet, GitBranch } from 'lucide-react';
+import { UploadCloud, Pencil, FolderUp, FileSpreadsheet, GitBranch, Loader2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useExecutionContext } from '@/contexts/execution-context';
 import { Skeleton } from '../ui/skeleton';
@@ -24,7 +24,7 @@ type ProjectUploadProps = {
     projectFileName: string | null;
     projectFileSource: 'local' | 'git' | null;
     dataFileName: string | null;
-    onProjectFileChange: (files: FileList | null) => void;
+    onProjectFileChange: (files: FileList) => Promise<void>;
     onDataFileChange: (file: File | null) => void;
     onClearProjectFile: () => void;
     onClearDataFile: () => void;
@@ -40,13 +40,14 @@ export function ProjectUpload({
     onClearDataFile,
 }: ProjectUploadProps) {
   const router = useRouter();
-  const { hasHydrated, handleGitImport } = useExecutionContext();
-  const [gitUrl, setGitUrl] = React.useState('');
+  const { hasHydrated, isUploadingProject } = useExecutionContext();
 
-  const handleProjectFolderChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleProjectFolderChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
-    if (files && files.length > 0) {
-      onProjectFileChange(files);
+    if (!files || files.length === 0) return;
+    await onProjectFileChange(files);
+     if (e.target) {
+      e.target.value = "";
     }
   };
   
@@ -64,10 +65,6 @@ export function ProjectUpload({
     router.push('/dashboard/data-editor');
   };
   
-  const handleGitImportClick = () => {
-    handleGitImport(gitUrl);
-  };
-
   const renderLoadingSkeleton = () => (
     <CardContent className="pt-6">
       <div className="space-y-4">
@@ -88,9 +85,9 @@ export function ProjectUpload({
     <div className="grid md:grid-cols-2 gap-6">
       <Card>
         <CardHeader>
-          <CardTitle className="font-headline">Load Project</CardTitle>
+          <CardTitle className="font-headline">Project Source</CardTitle>
           <CardDescription>
-            Choose a local project folder or import from a Git repository.
+            Upload your Robot Framework project folder to the execution server. This will replace any existing project.
           </CardDescription>
         </CardHeader>
         
@@ -99,9 +96,8 @@ export function ProjectUpload({
         ) : !projectFileName ? (
           <CardContent className="pt-6">
             <Tabs defaultValue="folder">
-              <TabsList className="grid w-full grid-cols-2">
-                <TabsTrigger value="folder"><FolderUp className="mr-2 h-4 w-4"/>Local Folder</TabsTrigger>
-                <TabsTrigger value="git"><GitBranch className="mr-2 h-4 w-4"/>Git Repository</TabsTrigger>
+              <TabsList className="grid w-full grid-cols-1">
+                <TabsTrigger value="folder" disabled={isUploadingProject}><FolderUp className="mr-2 h-4 w-4"/>Upload Local Project</TabsTrigger>
               </TabsList>
               <TabsContent value="folder" className="pt-4">
                 <div className="grid gap-2">
@@ -109,10 +105,11 @@ export function ProjectUpload({
                      <div className="flex items-center gap-2">
                         <Label htmlFor="project-folder-input" className={cn(
                           "flex items-center gap-2 cursor-pointer",
-                          buttonVariants({ variant: 'outline' })
+                          buttonVariants({ variant: 'outline' }),
+                          isUploadingProject && "cursor-not-allowed opacity-50"
                         )}>
-                          <FolderUp className="h-5 w-5" />
-                          <span className="font-bold">Choose Folder</span>
+                          {isUploadingProject ? <Loader2 className="h-5 w-5 animate-spin" /> : <FolderUp className="h-5 w-5" />}
+                          <span className="font-bold">{isUploadingProject ? 'Uploading...' : 'Choose Folder'}</span>
                         </Label>
                         <Input
                             id="project-folder-input"
@@ -121,23 +118,11 @@ export function ProjectUpload({
                             onChange={handleProjectFolderChange}
                             webkitdirectory="true"
                             directory=""
+                            disabled={isUploadingProject}
                         />
                     </div>
+                     <p className="text-xs text-muted-foreground">This will zip and upload the selected folder to the server.</p>
                 </div>
-              </TabsContent>
-              <TabsContent value="git" className="pt-4">
-                 <div className="grid gap-2">
-                    <Label htmlFor="git-url">Git Repository URL</Label>
-                    <div className="flex items-center gap-2">
-                        <Input 
-                            id="git-url" 
-                            placeholder="https://github.com/user/repo.git"
-                            value={gitUrl}
-                            onChange={(e) => setGitUrl(e.target.value)}
-                        />
-                        <Button onClick={handleGitImportClick} disabled={!gitUrl}>Import</Button>
-                    </div>
-                 </div>
               </TabsContent>
             </Tabs>
           </CardContent>
@@ -152,7 +137,7 @@ export function ProjectUpload({
                               <span className="text-sm text-muted-foreground truncate max-w-xs">{projectFileName}</span>
                           </div>
                       </div>
-                      <Button variant="destructive" size="sm" onClick={onClearProjectFile}>Clear</Button>
+                      <Button variant="destructive" size="sm" onClick={onClearProjectFile} disabled={isUploadingProject}>Clear</Button>
                   </div>
               </div>
           </CardContent>
@@ -163,7 +148,7 @@ export function ProjectUpload({
         <CardHeader>
           <CardTitle className="font-headline">Orchestrator Data</CardTitle>
           <CardDescription>
-            Upload and manage the Excel or CSV file for orchestrator runs.
+            Upload the Excel or CSV file for data-driven orchestrator runs.
           </CardDescription>
         </CardHeader>
         <CardContent className="pt-6">

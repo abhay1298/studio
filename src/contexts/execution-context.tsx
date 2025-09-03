@@ -2,13 +2,13 @@
 "use client";
 
 import { createContext, useContext, useState, useCallback, ReactNode, useEffect, Dispatch, SetStateAction } from 'react';
-import JSZip from 'jszip';
-import Papa from 'papaparse';
-import * as XLSX from 'xlsx';
 import { useToast } from "@/hooks/use-toast";
-import { CheckCircle2, FileCheck2, GitBranch, XCircle, FileWarning, StopCircle, Loader2 } from 'lucide-react';
+import { CheckCircle2, FileCheck2, XCircle, StopCircle, Loader2, FolderCheck, UploadCloud, AlertTriangle } from 'lucide-react';
 import type { TestSuite } from '@/components/dashboard/project-explorer';
 import type { DependencyScanResult } from '@/components/dashboard/dependency-checker';
+import * as XLSX from 'xlsx';
+import Papa from 'papaparse';
+
 
 type ExecutionStatus = "idle" | "running" | "success" | "failed" | "stopped";
 type RunConfig = {
@@ -20,6 +20,21 @@ type RunConfig = {
 
 type TableData = (string | number)[][];
 type MissingPackage = { name: string; required_spec: string; source_file: string; raw_line: string };
+type ProjectFileSource = 'local' | 'git' | null;
+
+export type DirectoryStatus = {
+  configured: boolean;
+  directory?: string;
+  robot_file_count?: number;
+  message?: string;
+};
+
+export type DiscoveredDirectory = {
+  path: string;
+  relative_path: string;
+  robot_count: number;
+  depth: number;
+}
 
 interface ExecutionContextType {
   status: ExecutionStatus;
@@ -28,7 +43,9 @@ interface ExecutionContextType {
   runConfig: RunConfig;
   
   projectFileName: string | null;
-  projectFileSource: 'local' | 'git' | null;
+  projectFileSource: ProjectFileSource;
+  isUploadingProject: boolean;
+
   dataFileName: string | null;
   
   dependencyScanResult: DependencyScanResult | null;
@@ -39,21 +56,33 @@ interface ExecutionContextType {
   testSuites: TestSuite[];
   isLoadingSuites: boolean;
   suiteLoadError: string | null;
+
+  directoryStatus: DirectoryStatus | null;
+  discoveredDirectories: DiscoveredDirectory[] | null;
+  isDiscovering: boolean;
+  isSettingDirectory: boolean;
+
   editedData: TableData;
   setEditedData: Dispatch<SetStateAction<TableData>>;
   editedHeaders: string[];
   setEditedHeaders: Dispatch<SetStateAction<string[]>>;
   hasHydrated: boolean;
+
   fetchSuites: () => Promise<void>;
+  fetchDirectoryStatus: () => Promise<void>;
+  discoverDirectories: () => Promise<void>;
+  setTestDirectory: (path: string) => Promise<void>;
+
   handleInputChange: (field: keyof RunConfig, value: string) => void;
   handleRun: (runType: string) => Promise<void>;
   handleStop: () => Promise<void>;
   clearLogs: () => void;
-  handleProjectFileUpload: (files: FileList | null) => void;
-  handleGitImport: (url: string) => void;
+
+  handleProjectFileUpload: (files: FileList) => Promise<void>;
   clearProjectFile: () => void;
   handleDataFileUpload: (file: File | null) => void;
   clearDataFile: () => void;
+
   scanDependencies: () => void;
   installDependencies: (packages: MissingPackage[]) => void;
 }
@@ -65,11 +94,11 @@ const getInitialState = <T extends unknown>(key: string, defaultValue: T): T => 
         return defaultValue;
     }
     try {
-        const item = window.sessionStorage.getItem(key);
+        const item = window.localStorage.getItem(key);
         if (!item || item === 'undefined') return defaultValue;
         return JSON.parse(item);
     } catch (error) {
-        console.warn(`Error reading sessionStorage key "${key}":`, error);
+        console.warn(`Error reading localStorage key "${key}":`, error);
         return defaultValue;
     }
 };
@@ -95,7 +124,9 @@ export function ExecutionProvider({ children }: { children: ReactNode }) {
   });
 
   const [projectFileName, setProjectFileName] = useState<string | null>(null);
-  const [projectFileSource, setProjectFileSource] = useState<'local' | 'git' | null>(null);
+  const [projectFileSource, setProjectFileSource] = useState<ProjectFileSource>(null);
+  const [isUploadingProject, setIsUploadingProject] = useState(false);
+
   const [dataFileName, setDataFileName] = useState<string | null>(null);
   
   const [dependencyScanResult, setDependencyScanResult] = useState<DependencyScanResult | null>(null);
@@ -103,10 +134,14 @@ export function ExecutionProvider({ children }: { children: ReactNode }) {
   const [isInstallingDependencies, setIsInstallingDependencies] = useState(false);
   const [scanError, setScanError] = useState<string | null>(null);
 
-
   const [testSuites, setTestSuites] = useState<TestSuite[]>([]);
   const [isLoadingSuites, setIsLoadingSuites] = useState(false);
   const [suiteLoadError, setSuiteLoadError] = useState<string | null>(null);
+
+  const [directoryStatus, setDirectoryStatus] = useState<DirectoryStatus | null>(null);
+  const [discoveredDirectories, setDiscoveredDirectories] = useState<DiscoveredDirectory[] | null>(null);
+  const [isDiscovering, setIsDiscovering] = useState(false);
+  const [isSettingDirectory, setIsSettingDirectory] = useState(false);
 
   const [editedData, setEditedData] = useState<TableData>([]);
   const [editedHeaders, setEditedHeaders] = useState<string[]>([]);
@@ -114,52 +149,7 @@ export function ExecutionProvider({ children }: { children: ReactNode }) {
 
   const { toast } = useToast();
   
-  useEffect(() => {
-    setProjectFileName(getInitialState('projectFileName', null));
-    setProjectFileSource(getInitialState('projectFileSource', null));
-    setDataFileName(getInitialState('dataFileName', null));
-    setDependencyScanResult(getInitialState('dependencyScanResult', null));
-    setEditedData(getInitialState('editedData', []));
-    setEditedHeaders(getInitialState('editedHeaders', []));
-    setHasHydrated(true);
-  }, []);
-
-  useEffect(() => {
-    if (hasHydrated) {
-        try {
-            sessionStorage.setItem('projectFileName', JSON.stringify(projectFileName));
-            sessionStorage.setItem('projectFileSource', JSON.stringify(projectFileSource));
-            sessionStorage.setItem('dataFileName', JSON.stringify(dataFileName));
-            sessionStorage.setItem('editedData', JSON.stringify(editedData));
-            sessionStorage.setItem('editedHeaders', JSON.stringify(editedHeaders));
-            sessionStorage.setItem('dependencyScanResult', JSON.stringify(dependencyScanResult));
-        } catch (error) {
-            console.warn(`Error writing to sessionStorage:`, error);
-        }
-    }
-  }, [projectFileName, projectFileSource, dataFileName, editedData, editedHeaders, dependencyScanResult, hasHydrated]);
-  
-  const clearDataFile = useCallback(() => {
-    setDataFileName(null);
-    setEditedData([]);
-    setEditedHeaders([]);
-  }, []);
-
-  const clearProjectFile = useCallback(() => {
-    setProjectFileName(null);
-    setProjectFileSource(null);
-    setDependencyScanResult(null);
-    setScanError(null);
-    clearDataFile();
-    setTestSuites([]);
-    toast({ title: 'Project Cleared' });
-  }, [toast, clearDataFile]);
-  
   const fetchSuites = useCallback(async () => {
-    if (!projectFileName) {
-        setTestSuites([]);
-        return;
-    }
     setIsLoadingSuites(true);
     setSuiteLoadError(null);
     try {
@@ -188,8 +178,121 @@ export function ExecutionProvider({ children }: { children: ReactNode }) {
     } finally {
         setIsLoadingSuites(false);
     }
-  }, [projectFileName]);
+  }, []);
 
+  const fetchDirectoryStatus = useCallback(async () => {
+    try {
+        const response = await fetch('/api/test-directory-status');
+        const data: DirectoryStatus = await response.json();
+        setDirectoryStatus(data);
+        if (data.configured) {
+            fetchSuites();
+        } else {
+            setTestSuites([]);
+        }
+    } catch (e) {
+        setDirectoryStatus({
+            configured: false,
+            message: 'Failed to connect to the backend server to get directory status.'
+        })
+    }
+  }, [fetchSuites]);
+
+  const handleDataFileUpload = useCallback(async (file: File | null) => {
+    if (!file) {
+      setDataFileName(null);
+      setEditedData([]);
+      setEditedHeaders([]);
+      return;
+    }
+    
+    if (!file.name.endsWith('.csv') && !file.name.endsWith('.xlsx')) {
+        toast({
+            variant: 'destructive',
+            title: 'Invalid File Type',
+            description: 'Please upload a .csv or .xlsx file.',
+        });
+        return;
+    }
+    
+    setDataFileName(file.name);
+
+    try {
+      const arrayBuffer = await readFileAsArrayBuffer(file);
+      const workbook = XLSX.read(arrayBuffer, { type: 'array' });
+      const sheetName = workbook.SheetNames[0];
+      const worksheet = workbook.Sheets[sheetName];
+      const data: any[][] = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
+      
+      if (data.length > 0) {
+        setEditedHeaders(data[0].map(String));
+        setEditedData(data.slice(1));
+        toast({
+          title: 'Data File Loaded',
+          description: `Successfully parsed ${file.name}.`,
+          action: <FileCheck2 className="text-green-500" />,
+        });
+      } else {
+        setEditedHeaders([]);
+        setEditedData([]);
+        toast({
+          variant: 'destructive',
+          title: 'Empty File',
+          description: 'The uploaded file appears to be empty.',
+        });
+      }
+
+    } catch (error) {
+      console.error('Error parsing file:', error);
+      toast({
+        variant: 'destructive',
+        title: 'File Read Error',
+        description: 'Could not read or parse the uploaded file.',
+      });
+      setDataFileName(null);
+      setEditedData([]);
+      setEditedHeaders([]);
+    }
+  }, [toast]);
+  
+  useEffect(() => {
+    setProjectFileName(getInitialState('projectFileName', null));
+    setProjectFileSource(getInitialState('projectFileSource', null));
+    setDataFileName(getInitialState('dataFileName', null));
+    setEditedData(getInitialState('editedData', []));
+    setEditedHeaders(getInitialState('editedHeaders', []));
+    setDependencyScanResult(getInitialState('dependencyScanResult', null));
+    setHasHydrated(true);
+
+    fetchDirectoryStatus();
+  }, [fetchDirectoryStatus]);
+
+  useEffect(() => {
+    if (hasHydrated) {
+        try {
+            localStorage.setItem('projectFileName', JSON.stringify(projectFileName));
+            localStorage.setItem('projectFileSource', JSON.stringify(projectFileSource));
+            localStorage.setItem('dataFileName', JSON.stringify(dataFileName));
+            localStorage.setItem('editedData', JSON.stringify(editedData));
+            localStorage.setItem('editedHeaders', JSON.stringify(editedHeaders));
+            localStorage.setItem('dependencyScanResult', JSON.stringify(dependencyScanResult));
+        } catch (error) {
+            console.warn(`Error writing to localStorage:`, error);
+        }
+    }
+  }, [projectFileName, projectFileSource, dataFileName, editedData, editedHeaders, dependencyScanResult, hasHydrated]);
+  
+  const clearProjectFile = useCallback(() => {
+    setProjectFileName(null);
+    setProjectFileSource(null);
+  }, []);
+
+  const clearDataFile = useCallback(() => {
+    setDataFileName(null);
+    setEditedData([]);
+    setEditedHeaders([]);
+  }, []);
+  
   const addLog = useCallback((message: string) => {
     const timestamp = new Date().toLocaleTimeString();
     setLogs(prev => [...prev, `[${timestamp}] ${message}`]);
@@ -400,144 +503,66 @@ export function ExecutionProvider({ children }: { children: ReactNode }) {
     }
   }, [addLog, toast]);
 
-  const parseAndSetDataFile = useCallback(async (fileContent: ArrayBuffer | string, fileName: string) => {
+  const handleProjectFileUpload = useCallback(async (files: FileList) => {
+    setIsUploadingProject(true);
+    toast({ title: 'Uploading Project...', description: 'Please wait...', action: <Loader2 className="animate-spin" /> });
+    
     try {
-      let data: any[][] = [];
-      let headers: string[] = [];
-
-      if (fileName.endsWith('.csv')) {
-        const textContent = typeof fileContent === 'string' ? fileContent : new TextDecoder().decode(fileContent);
-        const result = Papa.parse(textContent, {
-          header: true,
-          skipEmptyLines: true,
-        });
-        headers = result.meta.fields || [];
-        data = result.data.map((row: any) => headers.map(h => row[h]));
-      } else if (fileName.endsWith('.xlsx')) {
-        if (typeof fileContent === 'string') throw new Error("XLSX parsing requires ArrayBuffer");
-        const wb = XLSX.read(fileContent, { type: 'array' });
-        const wsname = wb.SheetNames[0];
-        const ws = wb.Sheets[wsname];
-        const jsonData: any[][] = XLSX.utils.sheet_to_json(ws, { header: 1 });
-        if (jsonData.length > 0) {
-          headers = jsonData[0].map(String);
-          data = jsonData.slice(1);
+        if (!files || files.length === 0) {
+            throw new Error("No files selected for upload.");
         }
-      }
-      setEditedHeaders(headers);
-      setEditedData(data);
 
-    } catch (e) {
-      console.error("Error parsing data file", e);
-      toast({ variant: 'destructive', title: "Error reading data file" });
-    }
-  }, [toast]);
-
-  const handleDataFileUpload = useCallback(async (file: File | null) => {
-    if (!file) {
-      clearDataFile();
-      return;
-    }
-
-    const allowedDataTypes = [
-        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-        'text/csv',
-    ];
-     if (!allowedDataTypes.includes(file.type) && !file.name.endsWith('.csv') && !file.name.endsWith('.xlsx')) {
-        toast({
-            variant: "destructive",
-            title: 'Invalid File Type',
-            description: `Only .csv and .xlsx files are supported for data orchestration.`,
-            action: <FileWarning/>,
+        const formData = new FormData();
+        let dataFileFound: File | null = null;
+        const projectRootName = files[0].webkitRelativePath.split('/')[0];
+        
+        for (let i = 0; i < files.length; i++) {
+            const file = files[i];
+            formData.append('files', file);
+            formData.append('relativePaths', file.webkitRelativePath);
+            
+            if (!dataFileFound && (file.name.endsWith('.csv') || file.name.endsWith('.xlsx'))) {
+              dataFileFound = file;
+            }
+        }
+        
+        // The browser will set the 'Content-Type' to 'multipart/form-data' automatically.
+        // Do not set it manually.
+        const response = await fetch('/api/upload-project', { 
+            method: 'POST', 
+            body: formData 
         });
-        return;
-    }
-    
-    try {
-      setDataFileName(file.name);
-      const buffer = await readFileAsArrayBuffer(file);
-      await parseAndSetDataFile(buffer, file.name);
 
-      toast({
-        title: 'Data File Uploaded',
-        description: file.name,
-        action: <FileCheck2 className="text-green-500" />,
-      });
-    } catch (e) {
-      const errorMessage = e instanceof Error ? e.message : "Unknown error";
-      toast({ variant: 'destructive', title: "Could not read data file", description: errorMessage });
-      clearDataFile();
-    }
-  }, [clearDataFile, parseAndSetDataFile, toast]);
+        if (!response.ok) {
+            const errorData = await response.json();
+            throw new Error(errorData.error || 'Failed to upload project to backend.');
+        }
+        
+        setProjectFileName(projectRootName);
+        setProjectFileSource('local');
+        toast({ title: "Project Uploaded", description: `"${projectRootName}" is now the active project.`, action: <UploadCloud className="text-primary"/> });
 
-  const handleProjectFileUpload = useCallback(async (files: FileList | null) => {
-    if (!files || files.length === 0) {
-      return;
-    }
-  
-    const firstPath = files[0].webkitRelativePath;
-    const projectName = firstPath.split('/')[0] || 'Uploaded Project';
-    
-    clearProjectFile();
-    setProjectFileName(projectName);
-    setProjectFileSource('local');
-  
-    try {
-      toast({
-        title: 'Project Loaded',
-        description: `${projectName} is now the active project. You may now scan dependencies or execute tests.`,
-        action: <FileCheck2 className="text-green-500" />,
-      });
-      
-      // Auto-detect and load data file
-      const fileList = Array.from(files);
-      const dataFile = fileList.find(f => f.name.endsWith('.csv') || f.name.endsWith('.xlsx'));
+        await fetchDirectoryStatus(); 
 
-      if (dataFile) {
-        // Use a slight delay to allow the project-loaded toast to appear first
-        setTimeout(() => {
-          handleDataFileUpload(dataFile);
-          toast({
-            title: 'Data File Auto-Loaded',
-            description: `Found and loaded "${dataFile.name}" from your project folder.`,
-            action: <FileCheck2 className="text-green-500" />,
-          });
-        }, 100);
-      }
-      
-      await fetchSuites();
-  
+        if (dataFileFound) {
+          toast({ title: "Data File Found!", description: `Automatically loaded "${dataFileFound.name}" from your project.`, action: <FileCheck2 className="text-green-500" /> });
+          await handleDataFileUpload(dataFileFound);
+        }
+
     } catch (error: any) {
-      toast({
-        variant: 'destructive',
-        title: 'Error processing project folder',
-        description: error.message || 'Could not process the selected folder. Please try again.',
-      });
-      clearProjectFile();
+        toast({ variant: 'destructive', title: 'Project Upload Failed', description: error.message });
+        clearProjectFile();
+    } finally {
+        setIsUploadingProject(false);
     }
-  }, [clearProjectFile, toast, fetchSuites, handleDataFileUpload]);
+  }, [toast, fetchDirectoryStatus, handleDataFileUpload, clearProjectFile]);
 
-  const handleGitImport = useCallback((url: string) => {
-    if (!url) {
-        toast({ variant: 'destructive', title: 'Invalid URL', description: 'Please enter a valid Git repository URL.'});
-        return;
-    }
-
-    const repoName = url.split('/').pop()?.replace('.git', '') || 'Git Project';
-    
-    clearProjectFile();
-    setProjectFileName(repoName);
-    setProjectFileSource('git');
-
-    toast({
-        title: 'Project Imported',
-        description: `Simulated import of "${repoName}".`,
-        action: <GitBranch className="text-primary" />,
-    });
-    fetchSuites();
-  }, [toast, clearProjectFile, fetchSuites]);
 
   const scanDependencies = useCallback(async () => {
+    if (!directoryStatus?.configured) {
+        toast({ variant: 'destructive', title: 'Cannot Scan', description: 'An active test directory must be configured first.' });
+        return;
+    }
     setIsScanningDependencies(true);
     setScanError(null);
     setDependencyScanResult(null);
@@ -555,7 +580,7 @@ export function ExecutionProvider({ children }: { children: ReactNode }) {
     } finally {
       setIsScanningDependencies(false);
     }
-  }, []);
+  }, [directoryStatus, toast]);
   
   const installDependencies = useCallback((packages: MissingPackage[]) => {
     if (!packages || packages.length === 0) return;
@@ -573,30 +598,36 @@ export function ExecutionProvider({ children }: { children: ReactNode }) {
             const data = await response.json();
             if (!response.ok) throw new Error(data.message || 'Failed to start installation');
 
-            // Start polling for logs
             pollingInterval = setInterval(async () => {
-                const statusRes = await fetch('/api/status');
-                const statusData = await statusRes.json();
-                if (statusData.logs) {
-                    setLogs(statusData.logs);
-                }
-                if (statusData.status !== 'running') {
-                    clearInterval(pollingInterval);
-                    setIsInstallingDependencies(false);
-                    if (statusData.status === 'success') {
-                        toast({
-                            title: 'Installation Complete',
-                            description: 'All missing packages have been installed. Please scan again to verify.',
-                            action: <CheckCircle2 className="text-green-500" />
-                        });
-                        await scanDependencies();
-                    } else {
-                        toast({
-                            variant: 'destructive',
-                            title: 'Installation Failed',
-                            description: 'Check the execution logs for more details.',
-                        });
+                try {
+                    const statusRes = await fetch('/api/status');
+                    const statusData = await statusRes.json();
+                    if (statusData.logs) {
+                        setLogs(statusData.logs);
                     }
+                    if (statusData.status !== 'running') {
+                        clearInterval(pollingInterval);
+                        setIsInstallingDependencies(false);
+                        if (statusData.status === 'success') {
+                            toast({
+                                title: 'Installation Complete',
+                                description: 'All missing packages have been installed. Please scan again to verify.',
+                                action: <CheckCircle2 className="text-green-500" />
+                            });
+                            await scanDependencies();
+                        } else {
+                            toast({
+                                variant: 'destructive',
+                                title: 'Installation Failed',
+                                description: 'Check the execution logs for more details.',
+                            });
+                        }
+                    }
+                } catch (pollError) {
+                  console.error('Polling error:', pollError);
+                  clearInterval(pollingInterval);
+                  setIsInstallingDependencies(false);
+                  toast({ variant: 'destructive', title: 'Connection Error', description: 'Lost connection to the backend during installation.' });
                 }
             }, 2000);
 
@@ -615,7 +646,51 @@ export function ExecutionProvider({ children }: { children: ReactNode }) {
     startInstallation();
 
   }, [toast, scanDependencies]);
-  
+
+  const discoverDirectories = useCallback(async () => {
+    setIsDiscovering(true);
+    setDiscoveredDirectories(null);
+    try {
+        const response = await fetch('/api/discover-test-directories');
+        const data = await response.json();
+        if (data.status !== 'success') {
+            throw new Error(data.message || 'Failed to discover directories from backend.');
+        }
+        setDiscoveredDirectories(data.directories);
+    } catch (e: any) {
+        toast({ variant: 'destructive', title: 'Discovery Failed', description: e.message });
+    } finally {
+        setIsDiscovering(false);
+    }
+  }, [toast]);
+
+  const setTestDirectory = useCallback(async (path: string) => {
+    setIsSettingDirectory(true);
+    try {
+        const response = await fetch('/api/set-test-directory', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ directory: path }),
+        });
+        const data = await response.json();
+        if (data.status !== 'success') {
+            throw new Error(data.message || 'Failed to set test directory on backend.');
+        }
+        toast({
+            title: 'Directory Configured',
+            description: `Active test directory has been set.`,
+            action: <FolderCheck className="text-green-500" />
+        });
+        await fetchDirectoryStatus();
+        setDiscoveredDirectories(null); // Close the discovery dialog
+    } catch (e: any) {
+        toast({ variant: 'destructive', title: 'Configuration Failed', description: e.message });
+    } finally {
+        setIsSettingDirectory(false);
+    }
+  }, [toast, fetchDirectoryStatus]);
+
+
   const value = {
     status,
     logs,
@@ -623,6 +698,7 @@ export function ExecutionProvider({ children }: { children: ReactNode }) {
     runConfig,
     projectFileName,
     projectFileSource,
+    isUploadingProject,
     dataFileName,
     dependencyScanResult,
     isScanningDependencies,
@@ -631,18 +707,24 @@ export function ExecutionProvider({ children }: { children: ReactNode }) {
     testSuites,
     isLoadingSuites,
     suiteLoadError,
+    directoryStatus,
+    discoveredDirectories,
+    isDiscovering,
+    isSettingDirectory,
     editedData,
     setEditedData,
     editedHeaders,
     setEditedHeaders,
     hasHydrated,
     fetchSuites,
+    fetchDirectoryStatus,
+    discoverDirectories,
+    setTestDirectory,
     handleInputChange,
     handleRun,
     handleStop,
     clearLogs,
     handleProjectFileUpload,
-    handleGitImport,
     clearProjectFile,
     handleDataFileUpload,
     clearDataFile,

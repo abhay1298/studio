@@ -4,10 +4,9 @@
 import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
-import { CheckCircle2, AlertTriangle, XCircle, Loader2, ListTodo, PackageCheck, PackagePlus, ServerCrash } from 'lucide-react';
+import { CheckCircle2, AlertTriangle, XCircle, Loader2, ListTodo, PackageCheck, PackagePlus, ServerCrash, Ban } from 'lucide-react';
 import { DependencyStatusDialog } from './dependency-status-dialog';
 import { useExecutionContext } from '@/contexts/execution-context';
-import { Skeleton } from '../ui/skeleton';
 
 export type DependencyScanResult = {
     status: 'success' | 'error';
@@ -19,11 +18,7 @@ export type DependencyScanResult = {
     errors: string[];
 };
 
-type DependencyCheckerProps = {
-  projectIsLoaded: boolean;
-};
-
-export function DependencyChecker({ projectIsLoaded }: DependencyCheckerProps) {
+export function DependencyChecker() {
   const { 
     dependencyScanResult,
     isScanningDependencies,
@@ -31,6 +26,7 @@ export function DependencyChecker({ projectIsLoaded }: DependencyCheckerProps) {
     scanDependencies,
     installDependencies,
     isInstallingDependencies,
+    directoryStatus,
   } = useExecutionContext();
 
   const [isDialogOpen, setIsDialogOpen] = useState(false);
@@ -72,7 +68,7 @@ export function DependencyChecker({ projectIsLoaded }: DependencyCheckerProps) {
             <ListTodo className="h-4 w-4" />
             <AlertTitle>Ready to Scan</AlertTitle>
             <AlertDescription>
-              Click the "Scan Project Dependencies" button to check for missing Python packages based on the `requirements.txt` files found in your project.
+              Click the "Scan Project Dependencies" button to check for missing Python packages based on the `requirements.txt` files found in your configured project.
             </AlertDescription>
         </Alert>
       );
@@ -132,12 +128,18 @@ export function DependencyChecker({ projectIsLoaded }: DependencyCheckerProps) {
   return (
     <>
       <div className="grid gap-4">
-        <Button onClick={scanDependencies} disabled={isScanningDependencies || !projectIsLoaded}>
+        <Button onClick={scanDependencies} disabled={isScanningDependencies || !directoryStatus?.configured}>
           {isScanningDependencies ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <ListTodo className="mr-2 h-4 w-4" />}
           Scan Project Dependencies
         </Button>
-
-        {renderContent()}
+        {!directoryStatus?.configured && (
+          <Alert variant="default">
+            <Ban className="h-4 w-4"/>
+            <AlertTitle>Action Required</AlertTitle>
+            <AlertDescription>You must configure a test directory before you can scan for dependencies.</AlertDescription>
+          </Alert>
+        )}
+        {directoryStatus?.configured && renderContent()}
       </div>
       <DependencyStatusDialog
           isOpen={isDialogOpen}
@@ -149,4 +151,3 @@ export function DependencyChecker({ projectIsLoaded }: DependencyCheckerProps) {
     </>
   );
 }
-

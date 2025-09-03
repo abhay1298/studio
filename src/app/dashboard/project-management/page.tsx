@@ -3,19 +3,19 @@
 
 import { DependencyChecker } from "@/components/dashboard/dependency-checker";
 import { ProjectUpload } from "@/components/dashboard/project-upload";
+import { TestDirectoryConfigurator } from "@/components/dashboard/test-directory-configurator";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { useExecutionContext } from "@/contexts/execution-context";
 
 export default function ProjectManagementPage() {
   const { 
-    requirementsContent, 
+    dataFileName,
+    handleDataFileUpload,
+    clearDataFile,
+    handleProjectFileUpload,
+    clearProjectFile,
     projectFileName,
     projectFileSource,
-    dataFileName,
-    handleProjectFileUpload,
-    handleDataFileUpload,
-    clearProjectFile,
-    clearDataFile,
   } = useExecutionContext();
 
   return (
@@ -23,22 +23,36 @@ export default function ProjectManagementPage() {
       <h1 className="font-headline text-3xl font-bold tracking-tight">
         Project Management
       </h1>
+      
       <ProjectUpload 
-        projectFileName={projectFileName}
-        projectFileSource={projectFileSource}
-        dataFileName={dataFileName}
         onProjectFileChange={handleProjectFileUpload}
         onDataFileChange={handleDataFileUpload}
         onClearProjectFile={clearProjectFile}
         onClearDataFile={clearDataFile}
+        projectFileName={projectFileName}
+        projectFileSource={projectFileSource}
+        dataFileName={dataFileName}
       />
+
       <Card>
         <CardHeader>
-            <CardTitle>Dependency Management</CardTitle>
-            <CardDescription>Scan the `requirements.txt` from your uploaded project to see if the required Python libraries are installed in the backend environment.</CardDescription>
+          <CardTitle className="font-headline">Test Directory Configuration</CardTitle>
+          <CardDescription>
+            Verify the active test directory on the backend server. Use the "Discover" button to switch between different test folders within your uploaded project.
+          </CardDescription>
         </CardHeader>
         <CardContent>
-            <DependencyChecker requirementsContent={requirementsContent} projectIsLoaded={!!projectFileName}/>
+          <TestDirectoryConfigurator />
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+            <CardTitle className="font-headline">Dependency Management</CardTitle>
+            <CardDescription>Scan your configured project to find and install required Python packages from `requirements.txt` files.</CardDescription>
+        </CardHeader>
+        <CardContent>
+            <DependencyChecker />
         </CardContent>
       </Card>
     </div>
