@@ -94,17 +94,17 @@ export function ProjectUploadForm() {
   return (
     <div className="space-y-4">
       <div className="space-y-1">
-        <Label htmlFor="project-zip">Robot Framework Project Folder (.zip)</Label>
+        <Label htmlFor="project-zip">Robot Framework Project (.zip archive)</Label>
         <div className={cn("flex items-center justify-center w-full p-4 border-2 border-dashed rounded-md", file && 'border-primary')}>
             <div className="text-center">
                 <UploadCloud className={cn("mx-auto h-10 w-10 text-muted-foreground", file && "text-primary")} />
                 <p className="mt-2 text-sm text-muted-foreground">
-                    {file ? <span className="font-semibold text-primary">{file.name}</span> : 'Drag & drop or click to select a file'}
+                    {file ? <span className="font-semibold text-primary">{file.name}</span> : 'Click to select your project .zip file'}
                 </p>
-                <p className="text-xs text-muted-foreground">Must be a single .zip file</p>
+                <p className="text-xs text-muted-foreground">Compress your project folder into a .zip file and upload it here.</p>
                 <Button variant="outline" size="sm" className="mt-4" onClick={triggerFileSelect} disabled={isUploading}>
                     <FolderUp className="mr-2 h-4 w-4" />
-                    Choose Folder
+                    Select .zip File
                 </Button>
             </div>
         </div>
