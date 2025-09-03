@@ -1,156 +1,206 @@
 "use client";
 
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import {
   Alert,
   AlertDescription,
   AlertTitle,
 } from '@/components/ui/alert';
-import { CheckCircle2, AlertTriangle, XCircle, Loader2 } from 'lucide-react';
+import { CheckCircle2, AlertTriangle, XCircle, Loader2, ListChecks, Ban } from 'lucide-react';
 import { DependencyStatusDialog } from './dependency-status-dialog';
 import { useToast } from '@/hooks/use-toast';
+import { useExecutionContext } from '@/contexts/execution-context';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../ui/card';
 
-export type DependencyStatus = {
-  library: string;
-  status: 'installed' | 'missing';
+export type MissingPackage = {
+    raw_line: string;
+    source_file: string;
 };
 
-type DependencyCheckerProps = {
-    requirementsContent: string;
-    projectIsLoaded: boolean;
+export type DependencyScanResult = {
+    status: 'success' | 'error';
+    installed_packages_count: number;
+    requirements_files: string[];
+    missing_packages: MissingPackage[];
+    suggestions: string[];
+    errors: string[];
 }
 
-export function DependencyChecker({ requirementsContent, projectIsLoaded }: DependencyCheckerProps) {
-  const [dependencyStatus, setDependencyStatus] = useState<DependencyStatus[]>([]);
-  const [isLoading, setIsLoading] = useState(false);
+export function DependencyChecker() {
+  const [scanResult, setScanResult] = useState<DependencyScanResult | null>(null);
+  const [isScanning, setIsScanning] = useState(false);
+  const [isInstalling, setIsInstalling] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
+
   const { toast } = useToast();
+  const { isTestDirectoryConfigured, addLog, logs } = useExecutionContext();
 
-  useEffect(() => {
-    // Reset status when project context changes
-    setDependencyStatus([]);
+  const handleScanDependencies = async () => {
+    setIsScanning(true);
     setError(null);
-  }, [requirementsContent, projectIsLoaded]);
-
-
-  const handleCheckDependencies = async () => {
-    setIsLoading(true);
-    setError(null);
-    setDependencyStatus([]);
-
-    if (!requirementsContent) {
-        setError("No requirements.txt found in the uploaded project.");
-        setIsLoading(false);
-        return;
-    }
+    setScanResult(null);
 
     try {
-      const response = await fetch('/api/check-dependencies', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ requirements: requirementsContent }),
-      });
+      const response = await fetch('/api/scan-dependencies');
+      const data: DependencyScanResult = await response.json();
       if (!response.ok) {
-        throw new Error('Failed to check dependencies on the server.');
+        throw new Error((data as any).error || 'Failed to scan dependencies on the server.');
       }
-      const data: DependencyStatus[] = await response.json();
-      setDependencyStatus(data);
-      if (data.length > 0) {
-        setIsDialogOpen(true);
-      } else {
-        toast({
-            title: "No dependencies found",
-            description: "Your requirements.txt seems to be empty."
-        })
-      }
+      setScanResult(data);
+      setIsDialogOpen(true);
     } catch (err: any) {
       setError(err.message || 'An unknown error occurred.');
+       toast({
+          variant: "destructive",
+          title: "Scan Failed",
+          description: err.message,
+      });
     } finally {
-      setIsLoading(false);
+      setIsScanning(false);
     }
   };
 
-  const renderSummary = () => {
-    if (isLoading) {
-      return (
-        <Alert>
-          <Loader2 className="h-4 w-4 animate-spin" />
-          <AlertTitle>Checking...</AlertTitle>
-          <AlertDescription>
-            Comparing your requirements against the environment.
-          </AlertDescription>
-        </Alert>
-      );
+  const handleInstallDependencies = async () => {
+    if (!scanResult || scanResult.missing_packages.length === 0) return;
+
+    setIsInstalling(true);
+    setError(null);
+    setIsDialogOpen(false); // Close the details dialog
+    
+    // We expect the logs to provide feedback on this.
+    toast({
+        title: "Installation Started",
+        description: `Installing ${scanResult.missing_packages.length} package(s). Check Execution Logs for progress.`
+    });
+
+    try {
+        const response = await fetch('/api/install-dependencies', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ missing_packages: scanResult.missing_packages }),
+        });
+
+        const data = await response.json();
+        if (!response.ok) {
+            throw new Error(data.message || 'Failed to start installation.');
+        }
+
+        addLog('--- Dependency Installation Started ---');
+        // Let polling in ExecutionPanel handle the logs
+        
+    } catch (err: any) {
+        setError(err.message || "An unknown error occurred during installation.");
+         toast({
+            variant: "destructive",
+            title: "Installation Failed",
+            description: err.message,
+        });
+    } finally {
+        setIsInstalling(false);
+        // Rescan after attempting install
+        handleScanDependencies();
+    }
+  }
+
+
+  const renderStatus = () => {
+     if (!isTestDirectoryConfigured) {
+        return (
+            <Alert variant="default" className="border-amber-500/50">
+                <Ban className="h-4 w-4" />
+                <AlertTitle>Project Not Loaded</AlertTitle>
+                <AlertDescription>
+                    Please upload or clone a project first before checking for dependencies.
+                </AlertDescription>
+            </Alert>
+        );
     }
 
-    if (error) {
-      return (
-        <Alert variant="destructive">
-          <XCircle className="h-4 w-4" />
-          <AlertTitle>Error</AlertTitle>
-          <AlertDescription>{error}</AlertDescription>
-        </Alert>
-      );
+    if (isScanning) {
+         return (
+            <Alert>
+                <Loader2 className="h-4 w-4 animate-spin" />
+                <AlertTitle>Scanning...</AlertTitle>
+                <AlertDescription>
+                    Checking the backend environment for required packages...
+                </AlertDescription>
+            </Alert>
+        );
     }
 
-    if (dependencyStatus.length === 0) {
-      return null;
+    if (!scanResult) {
+       return (
+            <Alert>
+                <ListChecks className="h-4 w-4" />
+                <AlertTitle>Ready to Scan</AlertTitle>
+                <AlertDescription>
+                    Click the "Scan Project Dependencies" button to check for missing Python packages based on the `requirements.txt` files found in your project.
+                </AlertDescription>
+            </Alert>
+        );
     }
 
-    const missingCount = dependencyStatus.filter(
-      (dep) => dep.status === 'missing'
-    ).length;
+    const { missing_packages, suggestions } = scanResult;
 
-    if (missingCount > 0) {
+    if (missing_packages.length > 0) {
       return (
         <Alert variant="destructive">
           <AlertTriangle className="h-4 w-4" />
-          <AlertTitle>Missing Dependencies</AlertTitle>
+          <AlertTitle>{missing_packages.length} Missing Dependencies</AlertTitle>
           <AlertDescription>
-            {missingCount} package(s) are missing.
+            Your project requires packages that are not installed in the backend.
              <Button variant="link" className="p-0 h-auto ml-1" onClick={() => setIsDialogOpen(true)}>
-                View details.
+                View details and install.
             </Button>
           </AlertDescription>
         </Alert>
       );
     }
 
-    return (
+     return (
       <Alert className="border-green-500/50 text-green-700 dark:border-green-500/50 dark:text-green-400">
         <CheckCircle2 className="h-4 w-4 !text-green-500" />
-        <AlertTitle>Dependencies Satisfied</AlertTitle>
+        <AlertTitle>All Dependencies Satisfied</AlertTitle>
         <AlertDescription>
-          All required packages are installed.
+         {suggestions.join(' ')}
         </AlertDescription>
       </Alert>
     );
-  };
+
+  }
 
   return (
     <>
-        <div className="grid gap-4">
-            <Alert>
-                <AlertTriangle className="h-4 w-4" />
-                <AlertTitle>How this works</AlertTitle>
-                <AlertDescription>This tool scans your project for a `requirements.txt` file and checks if the libraries are available. This is a simulation - a real implementation would check a live Python environment.</AlertDescription>
-            </Alert>
-             <Button
-                onClick={handleCheckDependencies}
-                disabled={isLoading || !projectIsLoaded}
-                className="w-full sm:w-auto"
-            >
-                {isLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-                Scan and Check Dependencies
-            </Button>
-            {renderSummary()}
-        </div>
+        <Card>
+            <CardHeader>
+                <CardTitle>Dependency Management</CardTitle>
+                <CardDescription>Scan the `requirements.txt` from your uploaded project to see if the required Python libraries are installed in the backend environment.</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+                <Button
+                    onClick={handleScanDependencies}
+                    disabled={isScanning || isInstalling || !isTestDirectoryConfigured}
+                    className="w-full"
+                >
+                    {isScanning || isInstalling ? (
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    ) : (
+                      <ListChecks className="mr-2 h-4 w-4" />
+                    )}
+                    {isInstalling ? 'Installing...' : 'Scan Project Dependencies'}
+                </Button>
+                {renderStatus()}
+            </CardContent>
+        </Card>
+        
         <DependencyStatusDialog 
             isOpen={isDialogOpen}
             onOpenChange={setIsDialogOpen}
-            statuses={dependencyStatus}
+            scanResult={scanResult}
+            onInstall={handleInstallDependencies}
+            isInstalling={isInstalling}
         />
     </>
 
