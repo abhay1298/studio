@@ -91,13 +91,14 @@ export function ExecutionProvider({ children }: { children: ReactNode }) {
       const data = await response.json();
 
       if (!response.ok) {
-        const errorMessage = data.error || `Failed to fetch suites. Status: ${response.status}`;
-        throw new Error(errorMessage);
+        // This will be triggered by non-2xx responses, where the body is JSON
+        setSuiteLoadError(data.error || `Failed to fetch suites. Status: ${response.status}`);
+      } else {
+        setTestSuites(data);
       }
-      
-      setTestSuites(data);
     } catch (e: any) {
       console.error("Failed to fetch test suites:", e);
+      // This will catch network errors or cases where response is not valid JSON
       setSuiteLoadError(e.message || 'An unknown error occurred while fetching suites.');
     } finally {
       setIsLoadingSuites(false);
