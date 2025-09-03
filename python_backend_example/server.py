@@ -304,7 +304,7 @@ def create_variable_file_from_data(timestamp):
         f.write("\nORCHESTRATOR_DATA = [\n")
         for row in data_rows:
             row_dict = {
-                (re.sub(r'[^a-zA-Z0-9_]', '_', str(headers[i])) if not re.sub(r'[^a-zA-Z0-9_]', '_', str(headers[i]))[0].isdigit() else 'var_' + re.sub(r'[^a-zA-Z0-9_]', '_', str(headers[i]))): (row[i] if i < len(row) else "") 
+                (re.sub(r'[^a-zA-Z0-9_]', '_', str(headers[i])) if not re.sub(r'[^a-zA-Z0-n_]', '_', str(headers[i]))[0].isdigit() else 'var_' + re.sub(r'[^a-zA-Z0-9_]', '_', str(headers[i]))): (row[i] if i < len(row) else "") 
                 for i in range(len(headers))
             }
             f.write(f"    {json.dumps(row_dict)},\n")
@@ -559,8 +559,9 @@ def scan_dependencies_endpoint():
     if not TESTS_DIRECTORY:
         return jsonify({
             "status": "error",
+            "message": "No active project directory set. Please upload or clone a project first.",
             "errors": ["No active project directory set. Please upload or clone a project first."]
-        }), 404
+        }), 400
     result = scan_dependencies()
     return jsonify(result)
 

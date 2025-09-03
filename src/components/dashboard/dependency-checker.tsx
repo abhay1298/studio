@@ -44,9 +44,9 @@ export function DependencyChecker() {
 
     try {
       const response = await fetch('/api/scan-dependencies');
-      const data: DependencyScanResult = await response.json();
+      const data = await response.json();
       if (!response.ok) {
-        throw new Error((data as any).error || 'Failed to scan dependencies on the server.');
+        throw new Error(data.error || data.message || 'Failed to scan dependencies on the server.');
       }
       setScanResult(data);
       setIsDialogOpen(true);
@@ -113,6 +113,18 @@ export function DependencyChecker() {
                 <AlertTitle>Project Not Loaded</AlertTitle>
                 <AlertDescription>
                     Please upload or clone a project first before checking for dependencies.
+                </AlertDescription>
+            </Alert>
+        );
+    }
+
+    if (error) {
+       return (
+            <Alert variant="destructive">
+                <XCircle className="h-4 w-4" />
+                <AlertTitle>Scan Error</AlertTitle>
+                <AlertDescription>
+                    {error}
                 </AlertDescription>
             </Alert>
         );
