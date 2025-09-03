@@ -442,50 +442,46 @@ def get_test_directory_status():
 
 @app.route('/upload-project', methods=['POST'])
 def upload_project():
-    if 'file' not in request.files:
+    if 'files' not in request.files:
         return jsonify({"error": "No file part in the request"}), 400
-    
-    file = request.files['file']
-    if file.filename == '':
-        return jsonify({"error": "No file selected"}), 400
 
-    if file and file.filename.endswith('.zip'):
-        try:
-            # Create a unique directory for the new project
-            project_name = os.path.splitext(file.filename)[0]
-            project_dir = os.path.join(PROJECTS_BASE_DIR, f"{project_name}-{datetime.datetime.now().strftime('%Y%m%d%H%M%S')}")
-            os.makedirs(project_dir, exist_ok=True)
+    files = request.files.getlist('files')
+    if not files or files[0].filename == '':
+        return jsonify({"error": "No files selected"}), 400
 
-            # Save and extract the zip file
-            zip_path = os.path.join(project_dir, file.filename)
-            file.save(zip_path)
+    try:
+        # Use the first file's path to determine the project name
+        # e.g., 'my-project/tests/test.robot' -> 'my-project'
+        first_path_parts = files[0].filename.split('/')
+        project_name = first_path_parts[0] if len(first_path_parts) > 1 else 'robot-project'
+        
+        project_dir = os.path.join(PROJECTS_BASE_DIR, f"{project_name}-{datetime.datetime.now().strftime('%Y%m%d%H%M%S')}")
+        os.makedirs(project_dir, exist_ok=True)
+        
+        for file in files:
+            # The filename from the browser includes the relative path
+            # We need to create the directory structure
+            relative_path = file.filename
+            # Sanitize path to prevent directory traversal attacks
+            if '..' in relative_path:
+                continue
+
+            save_path = os.path.join(project_dir, relative_path)
+            # Create subdirectories if they don't exist
+            os.makedirs(os.path.dirname(save_path), exist_ok=True)
+            file.save(save_path)
             
-            with zipfile.ZipFile(zip_path, 'r') as zip_ref:
-                zip_ref.extractall(project_dir)
-            
-            os.remove(zip_path) # Clean up the zip file
+        final_path = find_robot_files_and_get_root(project_dir)
+        set_active_directory(final_path)
 
-            # Check if the zip contained a single root folder
-            extracted_items = os.listdir(project_dir)
-            if len(extracted_items) == 1 and os.path.isdir(os.path.join(project_dir, extracted_items[0])):
-                # If so, the actual project is one level deeper
-                actual_project_path = os.path.join(project_dir, extracted_items[0])
-                final_path = find_robot_files_and_get_root(actual_project_path)
-            else:
-                final_path = find_robot_files_and_get_root(project_dir)
+        return jsonify({
+            "message": f"Project '{project_name}' uploaded and set as active.",
+            "path": TESTS_DIRECTORY,
+            "project_name": project_name
+        }), 200
 
-            set_active_directory(final_path)
-            
-            return jsonify({
-                "message": f"Project '{project_name}' uploaded and set as active.",
-                "path": TESTS_DIRECTORY,
-                "project_name": project_name
-            }), 200
-
-        except Exception as e:
-            return jsonify({"error": f"Failed to process zip file: {str(e)}"}), 500
-    
-    return jsonify({"error": "Invalid file type. Please upload a .zip file."}), 400
+    except Exception as e:
+        return jsonify({"error": f"Failed to process project files: {str(e)}"}), 500
 
 
 @app.route('/clone-repo', methods=['POST'])
@@ -791,3 +787,5 @@ if __name__ == '__main__':
     print("=" * 60)
     print("Starting server on http://127.0.0.1:5001")
     app.run(host='127.0.0.1', port=5001, debug=True)
+
+    
